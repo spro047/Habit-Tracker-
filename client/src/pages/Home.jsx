@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { useAuth } from '../store.jsx';
 import { navigate } from '../router.jsx';
 import { ProgressBar, PriorityTag, CheckSquare, Loading, Empty } from '../components.jsx';
 
+const FIRST_NAME = 'SHASHANK';
+
 export default function Home({ refreshKey, onChanged }) {
-  const { user } = useAuth();
   const [dash, setDash] = useState(null);
   const [err, setErr] = useState('');
 
@@ -19,7 +19,6 @@ export default function Home({ refreshKey, onChanged }) {
   if (!dash) return <Loading />;
 
   const { greeting, progress, habits, tasks, bestStreak } = dash;
-  const firstName = (user?.name || '').split(' ')[0].toUpperCase();
   const remaining = habits.filter(h => h.todayStatus === 'PENDING').length;
 
   const toggleHabit = async h => {
@@ -44,7 +43,7 @@ export default function Home({ refreshKey, onChanged }) {
     <div className="space-y-6">
       <h1 className="font-display text-3xl">
         {greeting},<br />
-        <span className="text-primary">{firstName}.</span>
+        <span className="text-primary">{FIRST_NAME}.</span>
       </h1>
 
       <section className="neo-card p-4">

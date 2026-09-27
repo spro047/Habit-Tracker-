@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { AuthProvider, useAuth } from './store.jsx';
 import { useRoute, navigate } from './router.jsx';
 import { api } from './api.js';
-import { Modal, HabitForm, TaskForm, Loading } from './components.jsx';
-import Login from './pages/Login.jsx';
+import { Modal, HabitForm, TaskForm } from './components.jsx';
 import Home from './pages/Home.jsx';
 import Habits from './pages/Habits.jsx';
 import Calendar from './pages/Calendar.jsx';
@@ -16,7 +14,6 @@ const TABS = [
 ];
 
 function Shell() {
-  const { user, logout } = useAuth();
   const route = useRoute();
   const [addOpen, setAddOpen] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -40,8 +37,7 @@ function Shell() {
         <button type="button" className="font-display text-xl cursor-pointer" onClick={() => navigate('#/')} aria-label="Go home">
           HABIT<span className="text-primary">/</span>TRACKER
         </button>
-        <span className="text-xs font-bold uppercase text-ink/60">{user?.name}</span>
-        <button type="button" className="neo-btn neo-btn--white text-xs py-1" onClick={logout}>LOGOUT</button>
+        <span className="neo-tag bg-white">V1</span>
       </header>
       <main>{view}</main>
 
@@ -104,16 +100,6 @@ function Shell() {
   );
 }
 
-function Gate() {
-  const { user, booted } = useAuth();
-  if (!booted) return <Loading />;
-  return user ? <Shell /> : <Login />;
-}
-
 export default function App() {
-  return (
-    <AuthProvider>
-      <Gate />
-    </AuthProvider>
-  );
+  return <Shell />;
 }
