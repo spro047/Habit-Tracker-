@@ -1,7 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { sql, addDays, todayStr, getStreaks, isScheduled, habitJson, userTimezone } from './db.js';
+import { db, oid, addDays, todayStr, getStreaks, isScheduled, habitJson, userTimezone } from './db.js';
 
 export const app = express();
 app.use(express.json());
@@ -15,12 +15,12 @@ const auth = (req, res, next) => {
 };
 const ah = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const validDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00Z').getTime());
-const taskJson = t => ({ id: t.id, title: t.title, priority: t.priority, status: t.status, dueDate: t.due_date });
-const HABIT_SELECT = 'id, name, description, color, priority, schedule_type, days_of_week, start_date::text AS start_date, status';
+const taskJson = t => ({ id: t._id.toString(), title: t.title, priority: t.priority, status: t.status, dueDate: t.dueDate });
+const PRIO = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 
 async function pctFor(row, userId, from, to) {
-  const rows = await sql`SELECT date::text AS date, status FROM habit_completions WHERE habit_id = ${row.id} AND user_id = ${userId} AND date >= ${from} AND date <= ${to}`;
-  const rec = new Map(rows.map(r => [r.date, r.status]));
+  const recs = await db.collection('habit_completions').find({ habitId: row._id, userId, date: { $gte: from, $lte: to } }).toArray();
+  const rec = new Map(recs.map(r => [r.date, r.status]));
   let sched = 0, done = 0;
   for (let d = from; d <= to; d = addDays(d, 1)) {
     if (!isScheduled(row, d)) continue;
@@ -33,8 +33,8 @@ async function pctFor(row, userId, from, to) {
 async function monthHistory(row, userId) {
   const today = todayStr(await userTimezone(userId));
   let y = +today.slice(0, 4), m = +today.slice(5, 7);
-  const rows = await sql`SELECT date::text AS date, status FROM habit_completions WHERE habit_id = ${row.id} AND user_id = ${userId}`;
-  const rec = new Map(rows.map(r => [r.date, r.status]));
+  const recs = await db.collection('habit_completions').find({ habitId: row._id, userId }).toArray();
+  const rec = new Map(recs.map(r => [r.date, r.status]));
   const out = [];
   for (let i = 0; i < 6; i++) {
     const key = `${y}-${String(m).padStart(2, '0')}`;
@@ -51,9 +51,10 @@ async function monthHistory(row, userId) {
 }
 
 const getHabit = async (req, res) => {
-  const rows = await sql`SELECT ${sql.unsafe(HABIT_SELECT)} FROM habits WHERE id = ${req.params.id} AND user_id = ${req.userId}`;
-  if (!rows.length) { res.status(404).json({ error: 'Habit not found' }); return null; }
-  return rows[0];
+  const id = oid(req.params.id);
+  const row = id ? await db.collection('habits').findOne({ _id: id, userId: req.userId }) : null;
+  if (!row) { res.status(404).json({ error: 'Habit not found' }); return null; }
+  return row;
 };
 
 // ---- AUTH ----
@@ -63,29 +64,31 @@ app.post('/api/auth/register', ah(async (req, res) => {
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Valid email required' });
   if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be 6+ characters' });
   const em = email.toLowerCase();
-  const exists = await sql`SELECT id FROM users WHERE email = ${em}`;
-  if (exists.length) return res.status(409).json({ error: 'Email already registered' });
-  const rows = await sql`INSERT INTO users (name, email, password_hash) VALUES (${name.trim()}, ${em}, ${bcrypt.hashSync(password, 10)}) RETURNING id, name, email`;
-  const user = rows[0];
+  if (await db.collection('users').findOne({ email: em })) return res.status(409).json({ error: 'Email already registered' });
+  const r = await db.collection('users').insertOne({
+    name: name.trim(), email: em, passwordHash: bcrypt.hashSync(password, 10), timezone: 'Asia/Kolkata', createdAt: new Date(),
+  });
+  const user = { id: r.insertedId.toString(), name: name.trim(), email: em };
   res.status(201).json({ token: sign(user.id), user });
 }));
 
 app.post('/api/auth/login', ah(async (req, res) => {
   const { email, password } = req.body || {};
-  const rows = await sql`SELECT * FROM users WHERE email = ${(email || '').toLowerCase()}`;
-  const row = rows[0];
-  if (!row || !bcrypt.compareSync(password || '', row.password_hash)) return res.status(401).json({ error: 'Invalid credentials' });
-  res.json({ token: sign(row.id), user: { id: row.id, name: row.name, email: row.email } });
+  const row = await db.collection('users').findOne({ email: (email || '').toLowerCase() });
+  if (!row || !bcrypt.compareSync(password || '', row.passwordHash)) return res.status(401).json({ error: 'Invalid credentials' });
+  const user = { id: row._id.toString(), name: row.name, email: row.email };
+  res.json({ token: sign(user.id), user });
 }));
 
 app.get('/api/auth/me', auth, ah(async (req, res) => {
-  const rows = await sql`SELECT id, name, email FROM users WHERE id = ${req.userId}`;
-  res.json({ user: rows[0] });
+  const u = await db.collection('users').findOne({ _id: oid(req.userId) }, { projection: { name: 1, email: 1 } });
+  if (!u) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ user: { id: u._id.toString(), name: u.name, email: u.email } });
 }));
 
 // ---- HABITS ----
 app.get('/api/habits', auth, ah(async (req, res) => {
-  const rows = await sql`SELECT ${sql.unsafe(HABIT_SELECT)} FROM habits WHERE user_id = ${req.userId} AND status != 'ARCHIVED' ORDER BY id`;
+  const rows = await db.collection('habits').find({ userId: req.userId, status: { $ne: 'ARCHIVED' } }).sort({ _id: 1 }).toArray();
   const habits = [];
   for (const r of rows) habits.push({ ...habitJson(r), streak: await getStreaks(r, req.userId) });
   res.json({ habits });
@@ -101,8 +104,11 @@ app.post('/api/habits', auth, ah(async (req, res) => {
   const start = validDate(sched.startDate) ? sched.startDate : todayStr();
   const priority = ['HIGH', 'MEDIUM', 'LOW'].includes(b.priority) ? b.priority : 'MEDIUM';
   const color = typeof b.color === 'string' && b.color ? b.color : '#D97706';
-  const rows = await sql`INSERT INTO habits (user_id, name, color, priority, schedule_type, days_of_week, start_date) VALUES (${req.userId}, ${name}, ${color}, ${priority}, ${type}, ${JSON.stringify(days)}, ${start}) RETURNING ${sql.unsafe(HABIT_SELECT)}`;
-  res.status(201).json(habitJson(rows[0]));
+  const r = await db.collection('habits').insertOne({
+    userId: req.userId, name, description: '', color, priority, scheduleType: type, daysOfWeek: days, startDate: start, status: 'ACTIVE', createdAt: new Date(),
+  });
+  const row = await db.collection('habits').findOne({ _id: r.insertedId });
+  res.status(201).json(habitJson(row));
 }));
 
 app.get('/api/habits/:id', auth, ah(async (req, res) => {
@@ -118,7 +124,7 @@ app.get('/api/habits/:id', auth, ah(async (req, res) => {
       bestStreak: streaks.best,
       weekPct: await pctFor(row, req.userId, addDays(today, -6), today),
       monthPct: await pctFor(row, req.userId, today.slice(0, 8) + '01', today),
-      allTimePct: await pctFor(row, req.userId, row.start_date, today),
+      allTimePct: await pctFor(row, req.userId, row.startDate, today),
     },
     history: await monthHistory(row, req.userId),
   });
@@ -129,24 +135,24 @@ app.patch('/api/habits/:id', auth, ah(async (req, res) => {
   if (!row) return;
   const b = req.body || {};
   const sched = b.schedule || {};
-  const sets = [];
-  if (b.name !== undefined) sets.push(sql`name = ${String(b.name).trim()}`);
-  if (b.color !== undefined) sets.push(sql`color = ${b.color}`);
-  if (b.priority !== undefined) sets.push(sql`priority = ${b.priority}`);
-  if (b.status !== undefined && ['ACTIVE', 'PAUSED', 'ARCHIVED'].includes(b.status)) sets.push(sql`status = ${b.status}`);
+  const set = {};
+  if (b.name !== undefined) set.name = String(b.name).trim();
+  if (b.color !== undefined) set.color = b.color;
+  if (b.priority !== undefined) set.priority = b.priority;
+  if (b.status !== undefined && ['ACTIVE', 'PAUSED', 'ARCHIVED'].includes(b.status)) set.status = b.status;
   if (b.schedule) {
-    if (sched.type !== undefined) sets.push(sql`schedule_type = ${sched.type === 'WEEKLY' ? 'WEEKLY' : 'DAILY'}`);
-    if (Array.isArray(sched.daysOfWeek)) sets.push(sql`days_of_week = ${JSON.stringify(sched.daysOfWeek.filter(d => Number.isInteger(d) && d >= 0 && d <= 6))}`);
-    if (validDate(sched.startDate)) sets.push(sql`start_date = ${sched.startDate}`);
+    if (sched.type !== undefined) set.scheduleType = sched.type === 'WEEKLY' ? 'WEEKLY' : 'DAILY';
+    if (Array.isArray(sched.daysOfWeek)) set.daysOfWeek = sched.daysOfWeek.filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
+    if (validDate(sched.startDate)) set.startDate = sched.startDate;
   }
-  if (sets.length) await sql`UPDATE habits SET ${sql.join(sets, sql`, `)} WHERE id = ${req.params.id} AND user_id = ${req.userId}`;
-  const updated = await sql`SELECT ${sql.unsafe(HABIT_SELECT)} FROM habits WHERE id = ${req.params.id}`;
-  res.json(habitJson(updated[0]));
+  if (Object.keys(set).length) await db.collection('habits').updateOne({ _id: row._id, userId: req.userId }, { $set: set });
+  const updated = await db.collection('habits').findOne({ _id: row._id });
+  res.json(habitJson(updated));
 }));
 
 app.delete('/api/habits/:id', auth, ah(async (req, res) => {
-  const r = await sql`UPDATE habits SET status = 'ARCHIVED' WHERE id = ${req.params.id} AND user_id = ${req.userId}`;
-  if (!r.count) return res.status(404).json({ error: 'Habit not found' });
+  const r = await db.collection('habits').updateOne({ _id: oid(req.params.id), userId: req.userId }, { $set: { status: 'ARCHIVED' } });
+  if (!r.matchedCount) return res.status(404).json({ error: 'Habit not found' });
   res.status(204).end();
 }));
 
@@ -154,24 +160,34 @@ app.delete('/api/habits/:id', auth, ah(async (req, res) => {
 const dateOf = req => validDate((req.body || {}).date) ? req.body.date : null;
 
 app.post('/api/habits/:id/complete', auth, ah(async (req, res) => {
-  const rows = await sql`SELECT id FROM habits WHERE id = ${req.params.id} AND user_id = ${req.userId}`;
-  if (!rows.length) return res.status(404).json({ error: 'Habit not found' });
+  const id = oid(req.params.id);
+  const row = id ? await db.collection('habits').findOne({ _id: id, userId: req.userId }, { projection: { _id: 1 } }) : null;
+  if (!row) return res.status(404).json({ error: 'Habit not found' });
   const date = dateOf(req) || todayStr(await userTimezone(req.userId));
-  await sql`INSERT INTO habit_completions (habit_id, user_id, date, status) VALUES (${rows[0].id}, ${req.userId}, ${date}, 'COMPLETED') ON CONFLICT (habit_id, date) DO UPDATE SET status = 'COMPLETED'`;
+  await db.collection('habit_completions').updateOne(
+    { habitId: row._id, date },
+    { $set: { userId: req.userId, status: 'COMPLETED' } },
+    { upsert: true }
+  );
   res.json({ status: 'COMPLETED' });
 }));
 
 app.post('/api/habits/:id/skip', auth, ah(async (req, res) => {
-  const rows = await sql`SELECT id FROM habits WHERE id = ${req.params.id} AND user_id = ${req.userId}`;
-  if (!rows.length) return res.status(404).json({ error: 'Habit not found' });
+  const id = oid(req.params.id);
+  const row = id ? await db.collection('habits').findOne({ _id: id, userId: req.userId }, { projection: { _id: 1 } }) : null;
+  if (!row) return res.status(404).json({ error: 'Habit not found' });
   const date = dateOf(req) || todayStr(await userTimezone(req.userId));
-  await sql`INSERT INTO habit_completions (habit_id, user_id, date, status) VALUES (${rows[0].id}, ${req.userId}, ${date}, 'SKIPPED') ON CONFLICT (habit_id, date) DO UPDATE SET status = 'SKIPPED'`;
+  await db.collection('habit_completions').updateOne(
+    { habitId: row._id, date },
+    { $set: { userId: req.userId, status: 'SKIPPED' } },
+    { upsert: true }
+  );
   res.json({ status: 'SKIPPED' });
 }));
 
 app.delete('/api/habits/:id/completion', auth, ah(async (req, res) => {
   const date = dateOf(req) || todayStr(await userTimezone(req.userId));
-  await sql`DELETE FROM habit_completions WHERE habit_id = ${req.params.id} AND user_id = ${req.userId} AND date = ${date}`;
+  await db.collection('habit_completions').deleteOne({ habitId: oid(req.params.id), userId: req.userId, date });
   res.status(204).end();
 }));
 
@@ -180,18 +196,20 @@ app.get('/api/dashboard/today', auth, ah(async (req, res) => {
   const tz = await userTimezone(req.userId);
   const today = todayStr(tz);
   const yest = addDays(today, -1);
-  const rows = await sql`SELECT ${sql.unsafe(HABIT_SELECT)} FROM habits WHERE user_id = ${req.userId} AND status = 'ACTIVE'`;
-  const todayRecs = await sql`SELECT habit_id, status FROM habit_completions WHERE user_id = ${req.userId} AND date = ${today}`;
-  const yestDone = await sql`SELECT habit_id FROM habit_completions WHERE user_id = ${req.userId} AND date = ${yest} AND status = 'COMPLETED'`;
-  const todayMap = new Map(todayRecs.map(r => [r.habit_id, r.status]));
+  const rows = await db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }).toArray();
+  const todayRecs = await db.collection('habit_completions').find({ userId: req.userId, date: today }).toArray();
+  const yestDone = await db.collection('habit_completions').countDocuments({ userId: req.userId, date: yest, status: 'COMPLETED' });
+  const todayMap = new Map(todayRecs.map(r => [r.habitId.toString(), r.status]));
   const habits = [];
   for (const r of rows) {
     if (!isScheduled(r, today)) continue;
-    habits.push({ ...habitJson(r), todayStatus: todayMap.get(r.id) || 'PENDING', streak: await getStreaks(r, req.userId) });
+    habits.push({ ...habitJson(r), todayStatus: todayMap.get(r._id.toString()) || 'PENDING', streak: await getStreaks(r, req.userId) });
   }
   const completed = habits.filter(h => h.todayStatus === 'COMPLETED').length;
   const scheduled = habits.length;
-  const tasks = await sql`SELECT id, title, priority, status, due_date::text AS due_date FROM tasks WHERE user_id = ${req.userId} AND (due_date IS NULL OR due_date = ${today}) ORDER BY CASE priority WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 ELSE 2 END, id DESC`;
+  const tasks = (await db.collection('tasks').find({ userId: req.userId, $or: [{ dueDate: null }, { dueDate: today }] }).toArray())
+    .sort((a, b) => PRIO[a.priority] - PRIO[b.priority] || b.createdAt - a.createdAt)
+    .map(taskJson);
   const hour = +new Intl.DateTimeFormat('en', { timeZone: tz, hour: '2-digit', hour12: false }).format(new Date());
   res.json({
     date: today,
@@ -201,10 +219,10 @@ app.get('/api/dashboard/today', auth, ah(async (req, res) => {
       completed,
       remaining: scheduled - completed,
       pct: scheduled ? Math.round((completed / scheduled) * 100) : 0,
-      vsYesterday: completed - yestDone.length,
+      vsYesterday: completed - yestDone,
     },
     habits,
-    tasks: tasks.map(taskJson),
+    tasks,
     bestStreak: Math.max(0, ...habits.map(h => h.streak.best)),
   });
 }));
@@ -215,25 +233,26 @@ app.post('/api/tasks', auth, ah(async (req, res) => {
   if (!title || !title.trim()) return res.status(400).json({ error: 'Title required' });
   const p = ['HIGH', 'MEDIUM', 'LOW'].includes(priority) ? priority : 'MEDIUM';
   const due = validDate(dueDate) ? dueDate : null;
-  const rows = await sql`INSERT INTO tasks (user_id, title, priority, due_date) VALUES (${req.userId}, ${title.trim()}, ${p}, ${due}) RETURNING id, title, priority, status, due_date::text AS due_date`;
-  res.status(201).json(taskJson(rows[0]));
+  const r = await db.collection('tasks').insertOne({ userId: req.userId, title: title.trim(), priority: p, dueDate: due, status: 'OPEN', createdAt: new Date() });
+  const row = await db.collection('tasks').findOne({ _id: r.insertedId });
+  res.status(201).json(taskJson(row));
 }));
 
 app.patch('/api/tasks/:id', auth, ah(async (req, res) => {
   const b = req.body || {};
-  const sets = [];
-  if (b.status !== undefined) sets.push(sql`status = ${b.status === 'DONE' ? 'DONE' : 'OPEN'}`);
-  if (b.title !== undefined) sets.push(sql`title = ${String(b.title).trim()}`);
-  if (b.priority !== undefined) sets.push(sql`priority = ${b.priority}`);
-  if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
-  const r = await sql`UPDATE tasks SET ${sql.join(sets, sql`, `)} WHERE id = ${req.params.id} AND user_id = ${req.userId} RETURNING id, title, priority, status, due_date::text AS due_date`;
-  if (!r.length) return res.status(404).json({ error: 'Task not found' });
-  res.json(taskJson(r[0]));
+  const set = {};
+  if (b.status !== undefined) set.status = b.status === 'DONE' ? 'DONE' : 'OPEN';
+  if (b.title !== undefined) set.title = String(b.title).trim();
+  if (b.priority !== undefined) set.priority = b.priority;
+  if (!Object.keys(set).length) return res.status(400).json({ error: 'Nothing to update' });
+  const r = await db.collection('tasks').findOneAndUpdate({ _id: oid(req.params.id), userId: req.userId }, { $set: set }, { returnDocument: 'after' });
+  if (!r) return res.status(404).json({ error: 'Task not found' });
+  res.json(taskJson(r));
 }));
 
 app.delete('/api/tasks/:id', auth, ah(async (req, res) => {
-  const r = await sql`DELETE FROM tasks WHERE id = ${req.params.id} AND user_id = ${req.userId}`;
-  if (!r.count) return res.status(404).json({ error: 'Task not found' });
+  const r = await db.collection('tasks').deleteOne({ _id: oid(req.params.id), userId: req.userId });
+  if (!r.deletedCount) return res.status(404).json({ error: 'Task not found' });
   res.status(204).end();
 }));
 
@@ -243,12 +262,12 @@ app.get('/api/calendar/month', auth, ah(async (req, res) => {
   const year = parseInt(req.query.year, 10) || +now.slice(0, 4);
   const qm = parseInt(req.query.month, 10);
   const m = Number.isInteger(qm) && qm >= 0 && qm <= 11 ? qm : +now.slice(5, 7) - 1;
-  const rows = await sql`SELECT ${sql.unsafe(HABIT_SELECT)} FROM habits WHERE user_id = ${req.userId} AND status = 'ACTIVE'`;
+  const rows = await db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }).toArray();
   const daysInMonth = new Date(year, m + 1, 0).getDate();
   const key = `${year}-${String(m + 1).padStart(2, '0')}`;
   const start = `${key}-01`;
   const end = `${key}-${String(daysInMonth).padStart(2, '0')}`;
-  const recs = await sql`SELECT habit_id, date FROM habit_completions WHERE user_id = ${req.userId} AND date >= ${start} AND date <= ${end} AND status = 'COMPLETED'`;
+  const recs = await db.collection('habit_completions').find({ userId: req.userId, date: { $gte: start, $lte: end }, status: 'COMPLETED' }).toArray();
   const doneByDate = new Map();
   for (const r of recs) doneByDate.set(r.date, (doneByDate.get(r.date) || 0) + 1);
   const days = [];
@@ -264,10 +283,10 @@ app.get('/api/calendar/month', auth, ah(async (req, res) => {
 app.get('/api/calendar/year', auth, ah(async (req, res) => {
   const now = todayStr(await userTimezone(req.userId));
   const year = parseInt(req.query.year, 10) || +now.slice(0, 4);
-  const rows = await sql`SELECT ${sql.unsafe(HABIT_SELECT)} FROM habits WHERE user_id = ${req.userId} AND status = 'ACTIVE'`;
+  const rows = await db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }).toArray();
   const start = `${year}-01-01`;
   const end = `${year}-12-31`;
-  const recs = await sql`SELECT habit_id, date FROM habit_completions WHERE user_id = ${req.userId} AND date >= ${start} AND date <= ${end} AND status = 'COMPLETED'`;
+  const recs = await db.collection('habit_completions').find({ userId: req.userId, date: { $gte: start, $lte: end }, status: 'COMPLETED' }).toArray();
   const doneByDate = new Map();
   for (const r of recs) doneByDate.set(r.date, (doneByDate.get(r.date) || 0) + 1);
   const days = [];

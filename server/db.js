@@ -1,49 +1,19 @@
-import postgres from 'postgres';
+import { MongoClient, ObjectId } from 'mongodb';
 
-const url = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL || 'postgres://postgres:postgres@localhost:5432/habbit';
-export const sql = postgres(url, { ssl: url.includes('localhost') ? false : 'require', max: 5 });
+const url = process.env.MONGO_URL;
+if (!url) throw new Error('MONGO_URL environment variable is required');
 
-await sql`CREATE TABLE IF NOT EXISTS users(
-  id BIGSERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)`;
-await sql`CREATE TABLE IF NOT EXISTS habits(
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  color TEXT NOT NULL DEFAULT '#D97706',
-  priority TEXT NOT NULL DEFAULT 'MEDIUM' CHECK (priority IN ('HIGH','MEDIUM','LOW')),
-  schedule_type TEXT NOT NULL DEFAULT 'DAILY' CHECK (schedule_type IN ('DAILY','WEEKLY')),
-  days_of_week TEXT NOT NULL DEFAULT '[]',
-  start_date DATE NOT NULL,
-  status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','PAUSED','ARCHIVED')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)`;
-await sql`CREATE TABLE IF NOT EXISTS habit_completions(
-  id BIGSERIAL PRIMARY KEY,
-  habit_id BIGINT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  date DATE NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('COMPLETED','SKIPPED')),
-  UNIQUE(habit_id, date)
-)`;
-await sql`CREATE TABLE IF NOT EXISTS tasks(
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title TEXT NOT NULL,
-  priority TEXT NOT NULL DEFAULT 'MEDIUM' CHECK (priority IN ('HIGH','MEDIUM','LOW')),
-  due_date DATE,
-  status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','DONE')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)`;
+export const client = new MongoClient(url, { appName: 'habbit-tracker' });
+await client.connect();
+export const db = client.db('habbit');
 
-export const safeJson = (s, fb) => {
-  try { return JSON.parse(s); } catch { return fb; }
+await db.collection('users').createIndex({ email: 1 }, { unique: true });
+await db.collection('habit_completions').createIndex({ habitId: 1, date: 1 }, { unique: true });
+await db.collection('habits').createIndex({ userId: 1 });
+await db.collection('tasks').createIndex({ userId: 1 });
+
+export const oid = id => {
+  try { return new ObjectId(id); } catch { return null; }
 };
 
 export const addDays = (dateStr, n) => {
@@ -56,29 +26,29 @@ export const todayStr = (tz = 'Asia/Kolkata') =>
   new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 export async function userTimezone(userId) {
-  const rows = await sql`SELECT timezone FROM users WHERE id = ${userId}`;
-  return rows[0]?.timezone || 'Asia/Kolkata';
+  const u = await db.collection('users').findOne({ _id: oid(userId) });
+  return u?.timezone || 'Asia/Kolkata';
 }
 
 export const isScheduled = (habit, dateStr) => {
-  if (dateStr < habit.start_date) return false;
-  if (habit.schedule_type === 'DAILY') return true;
-  return safeJson(habit.days_of_week, []).includes(new Date(dateStr + 'T00:00:00Z').getUTCDay());
+  if (dateStr < habit.startDate) return false;
+  if (habit.scheduleType === 'DAILY') return true;
+  return (habit.daysOfWeek || []).includes(new Date(dateStr + 'T00:00:00Z').getUTCDay());
 };
 
 export async function getStreaks(habit, userId) {
   const today = todayStr(await userTimezone(userId));
-  const rows = await sql`SELECT date::text AS date, status FROM habit_completions WHERE habit_id = ${habit.id} AND user_id = ${userId}`;
-  const rec = new Map(rows.map(r => [r.date, r.status]));
+  const recs = await db.collection('habit_completions').find({ habitId: habit._id, userId }).toArray();
+  const rec = new Map(recs.map(r => [r.date, r.status]));
   let current = 0;
-  for (let d = today; d >= habit.start_date; d = addDays(d, -1)) {
+  for (let d = today; d >= habit.startDate; d = addDays(d, -1)) {
     if (!isScheduled(habit, d)) continue;
     const s = rec.get(d);
     if (s === 'COMPLETED') current++;
     else if (s !== 'SKIPPED') break;
   }
   let best = 0, run = 0;
-  for (let d = habit.start_date; d <= today; d = addDays(d, 1)) {
+  for (let d = habit.startDate; d <= today; d = addDays(d, 1)) {
     if (!isScheduled(habit, d)) continue;
     if (rec.get(d) === 'COMPLETED') { run++; if (run > best) best = run; }
     else run = 0;
@@ -87,11 +57,11 @@ export async function getStreaks(habit, userId) {
 }
 
 export const habitJson = r => ({
-  id: r.id,
+  id: r._id.toString(),
   name: r.name,
   description: r.description,
   color: r.color,
   priority: r.priority,
-  schedule: { type: r.schedule_type, daysOfWeek: safeJson(r.days_of_week, []), startDate: r.start_date },
+  schedule: { type: r.scheduleType, daysOfWeek: r.daysOfWeek || [], startDate: r.startDate },
   status: r.status,
 });
