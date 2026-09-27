@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #fffbeb;
+  --color-ink: #0f172a;
+  --color-primary: #d97706;
+  --color-secondary: #f59e0b;
+  --color-success: #059669;
+  --color-danger: #dc2626;
+  --color-card: #ffffff;
+  --font-display: "Archivo Black", system-ui, sans-serif;
+  --font-body: "Space Grotesk", system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.neo-card {
+  background: var(--color-card);
+  border: 3px solid var(--color-ink);
+  box-shadow: 4px 4px 0 0 var(--color-ink);
+}
+
+.neo-btn {
+  display: inline-block;
+  background: var(--color-primary);
+  color: var(--color-ink);
+  border: 3px solid var(--color-ink);
+  box-shadow: 3px 3px 0 0 var(--color-ink);
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: box-shadow 150ms, transform 150ms;
+}
+.neo-btn:hover { box-shadow: 2px 2px 0 0 var(--color-ink); }
+.neo-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 0 var(--color-ink); }
+.neo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.neo-btn--white { background: #ffffff; }
+.neo-btn--green { background: var(--color-success); color: #ffffff; }
+.neo-btn--red { background: var(--color-danger); color: #ffffff; }
+
+.neo-input {
+  width: 100%;
+  background: #ffffff;
+  border: 3px solid var(--color-ink);
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+.neo-input:focus { outline: none; box-shadow: 0 0 0 3px var(--color-secondary); }
+
+.neo-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.25rem;
+}
+
+.neo-tag {
+  display: inline-block;
+  border: 2px solid var(--color-ink);
+  padding: 0.1rem 0.45rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-btn { transition: none; }
+}
