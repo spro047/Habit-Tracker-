@@ -42,6 +42,10 @@ await sql`CREATE TABLE IF NOT EXISTS tasks(
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 )`;
 
+export const DEFAULT_USER_EMAIL = 'shashank@habbit.app';
+const existing = await sql`SELECT id FROM users WHERE email = ${DEFAULT_USER_EMAIL}`;
+export const DEFAULT_USER_ID = existing[0]?.id ?? (await sql`INSERT INTO users (name, email, password_hash) VALUES ('Shashank', ${DEFAULT_USER_EMAIL}, '') RETURNING id`)[0].id;
+
 export const safeJson = (s, fb) => {
   try { return JSON.parse(s); } catch { return fb; }
 };

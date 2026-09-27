@@ -1,18 +1,12 @@
 import express from 'express';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import { sql, addDays, todayStr, getStreaks, isScheduled, habitJson, userTimezone } from './db.js';
+import { sql, addDays, todayStr, getStreaks, isScheduled, habitJson, userTimezone, DEFAULT_USER_ID } from './db.js';
 
 export const app = express();
 app.use(express.json());
-const SECRET = process.env.JWT_SECRET || 'dev-secret';
-const sign = id => jwt.sign({ sub: id }, SECRET, { expiresIn: '30d' });
-const auth = (req, res, next) => {
-  const h = req.headers.authorization || '';
-  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
-  try { req.userId = jwt.verify(token, SECRET).sub; next(); }
-  catch { res.status(401).json({ error: 'Unauthorized' }); }
-};
+app.use((req, res, next) => {
+  req.userId = DEFAULT_USER_ID;
+  next();
+});
 const ah = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const validDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00Z').getTime());
 const taskJson = t => ({ id: t.id, title: t.title, priority: t.priority, status: t.status, dueDate: t.due_date });
@@ -55,33 +49,6 @@ const getHabit = async (req, res) => {
   if (!rows.length) { res.status(404).json({ error: 'Habit not found' }); return null; }
   return rows[0];
 };
-
-// ---- AUTH ----
-app.post('/api/auth/register', ah(async (req, res) => {
-  const { name, email, password } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({ error: 'Name required' });
-  if (!email || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Valid email required' });
-  if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be 6+ characters' });
-  const em = email.toLowerCase();
-  const exists = await sql`SELECT id FROM users WHERE email = ${em}`;
-  if (exists.length) return res.status(409).json({ error: 'Email already registered' });
-  const rows = await sql`INSERT INTO users (name, email, password_hash) VALUES (${name.trim()}, ${em}, ${bcrypt.hashSync(password, 10)}) RETURNING id, name, email`;
-  const user = rows[0];
-  res.status(201).json({ token: sign(user.id), user });
-}));
-
-app.post('/api/auth/login', ah(async (req, res) => {
-  const { email, password } = req.body || {};
-  const rows = await sql`SELECT * FROM users WHERE email = ${(email || '').toLowerCase()}`;
-  const row = rows[0];
-  if (!row || !bcrypt.compareSync(password || '', row.password_hash)) return res.status(401).json({ error: 'Invalid credentials' });
-  res.json({ token: sign(row.id), user: { id: row.id, name: row.name, email: row.email } });
-}));
-
-app.get('/api/auth/me', auth, ah(async (req, res) => {
-  const rows = await sql`SELECT id, name, email FROM users WHERE id = ${req.userId}`;
-  res.json({ user: rows[0] });
-}));
 
 // ---- HABITS ----
 app.get('/api/habits', auth, ah(async (req, res) => {

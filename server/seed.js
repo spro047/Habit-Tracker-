@@ -1,12 +1,11 @@
-import bcrypt from 'bcryptjs';
 import assert from 'node:assert/strict';
-import { sql, addDays, todayStr, getStreaks, isScheduled } from './db.js';
+import { sql, addDays, todayStr, getStreaks, isScheduled, DEFAULT_USER_EMAIL } from './db.js';
 
-const demoEmail = 'shashank@demo.com';
+const demoEmail = DEFAULT_USER_EMAIL;
 
 await sql`DELETE FROM users WHERE email = ${demoEmail}`;
 
-const userRows = await sql`INSERT INTO users (name, email, password_hash) VALUES ('Shashank', ${demoEmail}, ${bcrypt.hashSync('demo1234', 10)}) RETURNING id`;
+const userRows = await sql`INSERT INTO users (name, email, password_hash) VALUES ('Shashank', ${demoEmail}, '') RETURNING id`;
 const userId = userRows[0].id;
 
 const mk = async (name, color, priority, schedule_type, days_of_week) => {
