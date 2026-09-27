@@ -1,59 +1,54 @@
 import bcrypt from 'bcryptjs';
 import assert from 'node:assert/strict';
-import { db, addDays, todayStr, getStreaks, isScheduled } from './db.js';
+import { sql, addDays, todayStr, getStreaks, isScheduled } from './db.js';
 
 const demoEmail = 'shashank@demo.com';
 
-// Idempotent: remove previous demo user + their data
-const existing = db.prepare('SELECT id FROM users WHERE email=?').get(demoEmail);
-if (existing) {
-  db.prepare('DELETE FROM habit_completions WHERE user_id=?').run(existing.id);
-  db.prepare('DELETE FROM tasks WHERE user_id=?').run(existing.id);
-  db.prepare('DELETE FROM habits WHERE user_id=?').run(existing.id);
-  db.prepare('DELETE FROM users WHERE id=?').run(existing.id);
-}
+await sql`DELETE FROM users WHERE email = ${demoEmail}`;
 
-const info = db.prepare('INSERT INTO users (name,email,password_hash) VALUES (?,?,?)').run('Shashank', demoEmail, bcrypt.hashSync('demo1234', 10));
-const userId = info.lastInsertRowid;
+const userRows = await sql`INSERT INTO users (name, email, password_hash) VALUES ('Shashank', ${demoEmail}, ${bcrypt.hashSync('demo1234', 10)}) RETURNING id`;
+const userId = userRows[0].id;
 
-const mk = (name, color, priority, schedule_type, days_of_week) => {
-  const r = db.prepare('INSERT INTO habits (user_id,name,color,priority,schedule_type,days_of_week,start_date) VALUES (?,?,?,?,?,?,?)')
-    .run(userId, name, color, priority, schedule_type, JSON.stringify(days_of_week), addDays(todayStr(), -60));
-  return db.prepare('SELECT * FROM habits WHERE id=?').get(r.lastInsertRowid);
+const mk = async (name, color, priority, schedule_type, days_of_week) => {
+  const r = await sql`INSERT INTO habits (user_id, name, color, priority, schedule_type, days_of_week, start_date) VALUES (${userId}, ${name}, ${color}, ${priority}, ${schedule_type}, ${JSON.stringify(days_of_week)}, ${addDays(todayStr(), -60)}) RETURNING id, schedule_type, days_of_week, start_date::text AS start_date`;
+  return r[0];
 };
 
-const study = mk('Study DSA', '#D97706', 'HIGH', 'DAILY', []);
-const read = mk('Read', '#059669', 'MEDIUM', 'DAILY', []);
-const exercise = mk('Exercise', '#DC2626', 'HIGH', 'WEEKLY', [1, 3, 5]);
-const meditate = mk('Meditate', '#8B5CF6', 'MEDIUM', 'DAILY', []);
+const study = await mk('Study DSA', '#D97706', 'HIGH', 'DAILY', []);
+const read = await mk('Read', '#059669', 'MEDIUM', 'DAILY', []);
+const exercise = await mk('Exercise', '#DC2626', 'HIGH', 'WEEKLY', [1, 3, 5]);
+const meditate = await mk('Meditate', '#8B5CF6', 'MEDIUM', 'DAILY', []);
 
-// Deterministic backfill: i = 0..59 (i=0 is 60 days ago, i=59 is yesterday). Today stays unseeded (PENDING).
 const gaps = {
-  [study.id]: new Set([4, 19, 34]),   // -> best run = days 35..59 = 25
-  [read.id]: new Set([8, 45]),        // -> best run = days 9..29 = 21 (SKIPPED at 30 resets)
-  [meditate.id]: new Set([3, 7, 11, 20, 31, 50]), // -> best run = days 32..49 = 18
+  [study.id]: new Set([4, 19, 34]),
+  [read.id]: new Set([8, 45]),
+  [meditate.id]: new Set([3, 7, 11, 20, 31, 50]),
 };
 const readSkips = new Set([30]);
 const exerciseMiss = new Set([13, 41]);
 const exerciseSkip = new Set([28]);
 
 const start = addDays(todayStr(), -60);
-const ins = db.prepare('INSERT OR IGNORE INTO habit_completions (habit_id,user_id,date,status) VALUES (?,?,?,?)');
 for (let i = 0; i < 60; i++) {
   const date = addDays(start, i);
   for (const h of [study, read, exercise, meditate]) {
     if (h.id === exercise.id) {
       if (!isScheduled(h, date)) continue;
-      if (exerciseMiss.has(i)) continue; // MISSED
-      ins.run(h.id, userId, date, exerciseSkip.has(i) ? 'SKIPPED' : 'COMPLETED');
+      if (exerciseMiss.has(i)) continue;
+      await sql`INSERT INTO habit_completions (habit_id, user_id, date, status) VALUES (${h.id}, ${userId}, ${date}, ${exerciseSkip.has(i) ? 'SKIPPED' : 'COMPLETED'}) ON CONFLICT (habit_id, date) DO NOTHING`;
     } else {
-      if (gaps[h.id].has(i)) continue; // MISSED
-      ins.run(h.id, userId, date, h.id === read.id && readSkips.has(i) ? 'SKIPPED' : 'COMPLETED');
+      if (gaps[h.id].has(i)) continue;
+      await sql`INSERT INTO habit_completions (habit_id, user_id, date, status) VALUES (${h.id}, ${userId}, ${date}, ${h.id === read.id && readSkips.has(i) ? 'SKIPPED' : 'COMPLETED'}) ON CONFLICT (habit_id, date) DO NOTHING`;
     }
   }
 }
 
-const s = { study: getStreaks(study, userId), read: getStreaks(read, userId), exercise: getStreaks(exercise, userId), meditate: getStreaks(meditate, userId) };
+const s = {
+  study: await getStreaks(study, userId),
+  read: await getStreaks(read, userId),
+  exercise: await getStreaks(exercise, userId),
+  meditate: await getStreaks(meditate, userId),
+};
 assert.equal(s.study.best, 25, 'Study DSA best streak = 25 (run days 35..59)');
 assert.equal(s.read.best, 21, 'Read best streak = 21 (run days 9..29; SKIPPED at 30 resets run)');
 assert.equal(s.meditate.best, 18, 'Meditate best streak = 18 (run days 32..49)');
@@ -72,7 +67,8 @@ for (let i = 0; i < 60; i++) {
 let expCurrent = 0;
 for (let d = todayStr(); d >= addDays(todayStr(), -60); d = addDays(d, -1)) {
   if (![1, 3, 5].includes(wd(d))) continue;
-  const rec = db.prepare('SELECT status FROM habit_completions WHERE habit_id=? AND date=?').get(exercise.id, d);
+  const recs = await sql`SELECT status FROM habit_completions WHERE habit_id = ${exercise.id} AND date = ${d}`;
+  const rec = recs[0];
   if (!rec) break;
   if (rec.status === 'COMPLETED') expCurrent++;
 }
@@ -84,3 +80,5 @@ console.log('Streaks (today unseeded):');
 for (const [h, st] of [[study, s.study], [read, s.read], [exercise, s.exercise], [meditate, s.meditate]])
   console.log(`  ${h.name.padEnd(12)} current=${st.current}  best=${st.best}`);
 console.log('All engine assertions passed.');
+
+await sql.end();
