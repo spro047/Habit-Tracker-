@@ -2,7 +2,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { encrypt, decrypt, tag } from './enc.js';
-import { db, oid, addDays, todayStr, getStreaks, isScheduled, habitJson, userTimezone, decryptHabit } from './db.js';
+import { db, oid, addDays, todayStr, calcStreaks, isScheduled, habitJson, userTimezone, decryptHabit } from './db.js';
 
 export const app = express();
 app.use(express.json());
@@ -17,44 +17,6 @@ const auth = (req, res, next) => {
 const ah = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const validDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00Z').getTime());
 const PRIO = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-
-async function pctFor(row, userId, from, to) {
-  const recs = await db.collection('habit_completions').find({ habitId: row._id, userId }).toArray();
-  const rec = new Map();
-  for (const r of recs) {
-    const date = decrypt(r.date);
-    const status = decrypt(r.status);
-    if (date >= from && date <= to) rec.set(date, status);
-  }
-  let sched = 0, done = 0;
-  for (let d = from; d <= to; d = addDays(d, 1)) {
-    if (!isScheduled(row, d)) continue;
-    sched++;
-    if (rec.get(d) === 'COMPLETED') done++;
-  }
-  return sched ? Math.round((done / sched) * 100) : 0;
-}
-
-async function monthHistory(row, userId) {
-  const today = todayStr(await userTimezone(userId));
-  let y = +today.slice(0, 4), m = +today.slice(5, 7);
-  const recs = await db.collection('habit_completions').find({ habitId: row._id, userId }).toArray();
-  const rec = new Map();
-  for (const r of recs) rec.set(decrypt(r.date), decrypt(r.status));
-  const out = [];
-  for (let i = 0; i < 6; i++) {
-    const key = `${y}-${String(m).padStart(2, '0')}`;
-    const n = new Date(y, m, 0).getDate();
-    const days = [];
-    for (let d = 1; d <= n; d++) {
-      const date = `${key}-${String(d).padStart(2, '0')}`;
-      days.push({ date, status: !isScheduled(row, date) ? 'NOT_SCHEDULED' : (rec.get(date) || 'MISSED') });
-    }
-    out.push({ month: key, days });
-    if (--m === 0) { m = 12; y--; }
-  }
-  return out.reverse();
-}
 
 const getHabit = async (req, res) => {
   const id = oid(req.params.id);
@@ -94,13 +56,22 @@ app.get('/api/auth/me', auth, ah(async (req, res) => {
 
 // ---- HABITS ----
 app.get('/api/habits', auth, ah(async (req, res) => {
-  const rows = await db.collection('habits').find({ userId: req.userId, status: { $ne: 'ARCHIVED' } }).sort({ _id: 1 }).toArray();
-  const habits = [];
-  for (const r of rows) {
-    const h = decryptHabit(r);
-    habits.push({ ...habitJson(h), streak: await getStreaks(h, req.userId) });
+  const [tz, rows, allRecs] = await Promise.all([
+    userTimezone(req.userId),
+    db.collection('habits').find({ userId: req.userId, status: { $ne: 'ARCHIVED' } }, { batchSize: 5000 }).sort({ _id: 1 }).toArray(),
+    db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
+  ]);
+  const today = todayStr(tz);
+  const habits = rows.map(decryptHabit);
+  const byHabit = new Map();
+  for (const r of allRecs) {
+    const key = r.habitId.toString();
+    if (!byHabit.has(key)) byHabit.set(key, []);
+    byHabit.get(key).push([decrypt(r.date), decrypt(r.status)]);
   }
-  res.json({ habits });
+  res.json({
+    habits: habits.map(h => ({ ...habitJson(h), streak: calcStreaks(h, new Map(byHabit.get(h._id.toString()) || []), today) })),
+  });
 }));
 
 app.post('/api/habits', auth, ah(async (req, res) => {
@@ -130,25 +101,48 @@ app.post('/api/habits', auth, ah(async (req, res) => {
 }));
 
 app.get('/api/habits/:id', auth, ah(async (req, res) => {
-  const row = await getHabit(req, res);
+  const [row, tz] = await Promise.all([getHabit(req, res), userTimezone(req.userId)]);
   if (!row) return;
-  const tz = await userTimezone(req.userId);
   const today = todayStr(tz);
-  const streaks = await getStreaks(row, req.userId);
+  const recs = await db.collection('habit_completions').find({ habitId: row._id, userId: req.userId }).toArray();
+  const rec = new Map(recs.map(r => [decrypt(r.date), decrypt(r.status)]));
+  const streaks = calcStreaks(row, rec, today);
+  const pct = (from, to) => {
+    let sched = 0, done = 0;
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      if (!isScheduled(row, d)) continue;
+      sched++;
+      if (rec.get(d) === 'COMPLETED') done++;
+    }
+    return sched ? Math.round((done / sched) * 100) : 0;
+  };
   const dow = new Date(today + 'T00:00:00Z').getUTCDay();
   const monday = addDays(today, -(dow === 0 ? 6 : dow - 1));
   const sunday = addDays(monday, 6);
   const month = +today.slice(5, 7);
   const monthEnd = `${today.slice(0, 7)}-${String(new Date(+today.slice(0, 4), month, 0).getDate()).padStart(2, '0')}`;
+  let y = +today.slice(0, 4), m = +today.slice(5, 7);
+  const history = [];
+  for (let i = 0; i < 6; i++) {
+    const key = `${y}-${String(m).padStart(2, '0')}`;
+    const n = new Date(y, m, 0).getDate();
+    const days = [];
+    for (let d = 1; d <= n; d++) {
+      const date = `${key}-${String(d).padStart(2, '0')}`;
+      days.push({ date, status: !isScheduled(row, date) ? 'NOT_SCHEDULED' : (rec.get(date) || 'MISSED') });
+    }
+    history.push({ month: key, days });
+    if (--m === 0) { m = 12; y--; }
+  }
   res.json({
     habit: habitJson(row),
     stats: {
       currentStreak: streaks.current,
       bestStreak: streaks.best,
-      weekPct: await pctFor(row, req.userId, monday, sunday),
-      monthPct: await pctFor(row, req.userId, today.slice(0, 8) + '01', monthEnd),
+      weekPct: pct(monday, sunday),
+      monthPct: pct(today.slice(0, 8) + '01', monthEnd),
     },
-    history: await monthHistory(row, req.userId),
+    history: history.reverse(),
   });
 }));
 
@@ -220,28 +214,35 @@ app.delete('/api/habits/:id/completion', auth, ah(async (req, res) => {
 
 // ---- DASHBOARD ----
 app.get('/api/dashboard/today', auth, ah(async (req, res) => {
-  const tz = await userTimezone(req.userId);
+  const [tz, rows, allRecs, tasks] = await Promise.all([
+    userTimezone(req.userId),
+    db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).toArray(),
+    db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
+    db.collection('tasks').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
+  ]);
   const today = todayStr(tz);
   const yest = addDays(today, -1);
-  const rows = await db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }).toArray();
-  const allRecs = await db.collection('habit_completions').find({ userId: req.userId }).toArray();
   const todayMap = new Map();
+  const byHabit = new Map();
   let yestDone = 0;
   for (const r of allRecs) {
     const date = decrypt(r.date);
     const status = decrypt(r.status);
-    if (date === today) todayMap.set(r.habitId.toString(), status);
+    const key = r.habitId.toString();
+    if (date === today) todayMap.set(key, status);
     if (date === yest && status === 'COMPLETED') yestDone++;
+    if (!byHabit.has(key)) byHabit.set(key, []);
+    byHabit.get(key).push([date, status]);
   }
   const habits = [];
   for (const r of rows) {
     const h = decryptHabit(r);
     if (!isScheduled(h, today)) continue;
-    habits.push({ ...habitJson(h), todayStatus: todayMap.get(h._id.toString()) || 'PENDING', streak: await getStreaks(h, req.userId) });
+    habits.push({ ...habitJson(h), todayStatus: todayMap.get(h._id.toString()) || 'PENDING', streak: calcStreaks(h, new Map(byHabit.get(h._id.toString()) || []), today) });
   }
   const completed = habits.filter(h => h.todayStatus === 'COMPLETED').length;
   const scheduled = habits.length;
-  const tasks = (await db.collection('tasks').find({ userId: req.userId }).toArray())
+  const taskList = tasks
     .map(t => ({ ...t, title: decrypt(t.title), priority: decrypt(t.priority), dueDate: decrypt(t.dueDate), status: decrypt(t.status) }))
     .filter(t => !t.dueDate || t.dueDate === today)
     .sort((a, b) => PRIO[a.priority] - PRIO[b.priority] || b.createdAt - a.createdAt)
@@ -300,12 +301,15 @@ app.get('/api/calendar/month', auth, ah(async (req, res) => {
   const year = parseInt(req.query.year, 10) || +now.slice(0, 4);
   const qm = parseInt(req.query.month, 10);
   const m = Number.isInteger(qm) && qm >= 0 && qm <= 11 ? qm : +now.slice(5, 7) - 1;
-  const rows = await db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }).toArray();
+  const [rows, allRecs] = await Promise.all([
+    db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).toArray(),
+    db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
+  ]);
+  const dec = rows.map(decryptHabit);
   const daysInMonth = new Date(year, m + 1, 0).getDate();
   const key = `${year}-${String(m + 1).padStart(2, '0')}`;
   const start = `${key}-01`;
   const end = `${key}-${String(daysInMonth).padStart(2, '0')}`;
-  const allRecs = await db.collection('habit_completions').find({ userId: req.userId }).toArray();
   const doneByDate = new Map();
   for (const r of allRecs) {
     if (decrypt(r.status) !== 'COMPLETED') continue;
@@ -315,7 +319,7 @@ app.get('/api/calendar/month', auth, ah(async (req, res) => {
   const days = [];
   for (let d = 1; d <= daysInMonth; d++) {
     const date = `${key}-${String(d).padStart(2, '0')}`;
-    const scheduled = rows.filter(h => isScheduled(decryptHabit(h), date)).length;
+    const scheduled = dec.filter(h => isScheduled(h, date)).length;
     const completed = doneByDate.get(date) || 0;
     days.push({ date, scheduled, completed, pct: scheduled ? Math.round((completed / scheduled) * 100) : 0 });
   }
@@ -325,10 +329,13 @@ app.get('/api/calendar/month', auth, ah(async (req, res) => {
 app.get('/api/calendar/year', auth, ah(async (req, res) => {
   const now = todayStr(await userTimezone(req.userId));
   const year = parseInt(req.query.year, 10) || +now.slice(0, 4);
-  const rows = await db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }).toArray();
+  const [rows, allRecs] = await Promise.all([
+    db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).toArray(),
+    db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
+  ]);
+  const dec = rows.map(decryptHabit);
   const start = `${year}-01-01`;
   const end = `${year}-12-31`;
-  const allRecs = await db.collection('habit_completions').find({ userId: req.userId }).toArray();
   const doneByDate = new Map();
   for (const r of allRecs) {
     if (decrypt(r.status) !== 'COMPLETED') continue;
@@ -337,7 +344,7 @@ app.get('/api/calendar/year', auth, ah(async (req, res) => {
   }
   const days = [];
   for (let d = start; d <= end; d = addDays(d, 1)) {
-    const scheduled = rows.filter(h => isScheduled(decryptHabit(h), d)).length;
+    const scheduled = dec.filter(h => isScheduled(h, d)).length;
     const completed = doneByDate.get(d) || 0;
     days.push({ date: d, scheduled, completed, pct: scheduled ? Math.round((completed / scheduled) * 100) : 0 });
   }

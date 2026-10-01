@@ -11,13 +11,19 @@ export const encrypt = v => {
   return 'enc:' + Buffer.concat([iv, enc, cipher.getAuthTag()]).toString('base64');
 };
 
+const cache = new Map();
 export const decrypt = v => {
   if (typeof v !== 'string' || !v.startsWith('enc:')) return v;
+  const hit = cache.get(v);
+  if (hit !== undefined) return hit;
   try {
     const buf = Buffer.from(v.slice(4), 'base64');
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, buf.subarray(0, 12));
     decipher.setAuthTag(buf.subarray(buf.length - 16));
-    return decipher.update(buf.subarray(12, buf.length - 16), null, 'utf8') + decipher.final('utf8');
+    const out = decipher.update(buf.subarray(12, buf.length - 16), null, 'utf8') + decipher.final('utf8');
+    if (cache.size > 20000) cache.clear();
+    cache.set(v, out);
+    return out;
   } catch {
     return v;
   }
