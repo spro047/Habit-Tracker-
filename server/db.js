@@ -1,4 +1,5 @@
 import { MongoClient, ObjectId } from 'mongodb';
+import { decrypt } from './enc.js';
 
 const url = process.env.MONGO_URL;
 if (!url) throw new Error('MONGO_URL environment variable is required');
@@ -8,7 +9,8 @@ await client.connect();
 export const db = client.db('habbit');
 
 await db.collection('users').createIndex({ email: 1 }, { unique: true });
-await db.collection('habit_completions').createIndex({ habitId: 1, date: 1 }, { unique: true });
+await db.collection('habit_completions').createIndex({ habitId: 1, dateTag: 1 }, { unique: true })
+  .catch(() => console.warn('dateTag index deferred: legacy completions present, run migrate-encrypt.js'));
 await db.collection('habits').createIndex({ userId: 1 });
 await db.collection('tasks').createIndex({ userId: 1 });
 
@@ -39,7 +41,7 @@ export const isScheduled = (habit, dateStr) => {
 export async function getStreaks(habit, userId) {
   const today = todayStr(await userTimezone(userId));
   const recs = await db.collection('habit_completions').find({ habitId: habit._id, userId }).toArray();
-  const rec = new Map(recs.map(r => [r.date, r.status]));
+  const rec = new Map(recs.map(r => [decrypt(r.date), decrypt(r.status)]));
   let current = 0;
   for (let d = today; d >= habit.startDate; d = addDays(d, -1)) {
     if (!isScheduled(habit, d)) continue;
@@ -55,6 +57,25 @@ export async function getStreaks(habit, userId) {
   }
   return { current, best };
 }
+
+const parseDays = v => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string') {
+    try { return JSON.parse(v); } catch { return []; }
+  }
+  return [];
+};
+
+export const decryptHabit = r => ({
+  ...r,
+  name: decrypt(r.name),
+  description: decrypt(r.description),
+  color: decrypt(r.color),
+  priority: decrypt(r.priority),
+  scheduleType: decrypt(r.scheduleType),
+  daysOfWeek: parseDays(decrypt(r.daysOfWeek)),
+  startDate: decrypt(r.startDate),
+});
 
 export const habitJson = r => ({
   id: r._id.toString(),

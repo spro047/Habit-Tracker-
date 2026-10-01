@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import assert from 'node:assert/strict';
-import { client, db, addDays, todayStr, getStreaks, isScheduled } from './db.js';
+import { encrypt, tag } from './enc.js';
+import { client, db, addDays, todayStr, getStreaks, isScheduled, decryptHabit } from './db.js';
 
 const demoEmail = 'shashank@demo.com';
 
@@ -19,9 +20,18 @@ const userId = user.insertedId.toString();
 
 const mk = async (name, color, priority, scheduleType, daysOfWeek) => {
   const r = await db.collection('habits').insertOne({
-    userId, name, description: '', color, priority, scheduleType, daysOfWeek, startDate: addDays(todayStr(), -60), status: 'ACTIVE', createdAt: new Date(),
+    userId,
+    name: encrypt(name),
+    description: encrypt(''),
+    color: encrypt(color),
+    priority: encrypt(priority),
+    scheduleType: encrypt(scheduleType),
+    daysOfWeek: encrypt(JSON.stringify(daysOfWeek)),
+    startDate: encrypt(addDays(todayStr(), -60)),
+    status: 'ACTIVE',
+    createdAt: new Date(),
   });
-  return db.collection('habits').findOne({ _id: r.insertedId });
+  return decryptHabit(await db.collection('habits').findOne({ _id: r.insertedId }));
 };
 
 const study = await mk('Study DSA', '#D97706', 'HIGH', 'DAILY', []);
@@ -46,10 +56,10 @@ for (let i = 0; i < 60; i++) {
     if (h._id.equals(exercise._id)) {
       if (!isScheduled(h, date)) continue;
       if (exerciseMiss.has(i)) continue;
-      await completions.insertOne({ habitId: h._id, userId, date, status: exerciseSkip.has(i) ? 'SKIPPED' : 'COMPLETED' });
+      await completions.insertOne({ habitId: h._id, userId, dateTag: tag(h._id, date), date: encrypt(date), status: encrypt(exerciseSkip.has(i) ? 'SKIPPED' : 'COMPLETED') });
     } else {
       if (gaps[h._id.toString()].has(i)) continue;
-      await completions.insertOne({ habitId: h._id, userId, date, status: h._id.equals(read._id) && readSkips.has(i) ? 'SKIPPED' : 'COMPLETED' });
+      await completions.insertOne({ habitId: h._id, userId, dateTag: tag(h._id, date), date: encrypt(date), status: encrypt(h._id.equals(read._id) && readSkips.has(i) ? 'SKIPPED' : 'COMPLETED') });
     }
   }
 }
@@ -78,9 +88,9 @@ for (let i = 0; i < 60; i++) {
 let expCurrent = 0;
 for (let d = todayStr(); d >= addDays(todayStr(), -60); d = addDays(d, -1)) {
   if (![1, 3, 5].includes(wd(d))) continue;
-  const rec = await completions.findOne({ habitId: exercise._id, date: d });
+  const rec = await completions.findOne({ habitId: exercise._id, dateTag: tag(exercise._id, d) });
   if (!rec) break;
-  if (rec.status === 'COMPLETED') expCurrent++;
+  if (decrypt(rec.status) === 'COMPLETED') expCurrent++;
 }
 assert.equal(s.exercise.best, expBest, 'Exercise best = independent oracle');
 assert.equal(s.exercise.current, expCurrent, 'Exercise current = independent oracle');
