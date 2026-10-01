@@ -16,7 +16,7 @@ const TABS = [
 ];
 
 function Shell() {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const route = useRoute();
   const [addOpen, setAddOpen] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -41,7 +41,6 @@ function Shell() {
           HABIT<span className="text-primary">/</span>TRACKER
         </button>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase text-ink/60">{user?.name}</span>
           <ThemePicker />
           <button type="button" className="neo-btn neo-btn--white text-xs py-1" onClick={logout}>LOGOUT</button>
         </div>
