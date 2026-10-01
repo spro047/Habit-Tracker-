@@ -21,6 +21,15 @@ export function AuthProvider({ children }) {
     } else setBooted(true);
   }, []);
 
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setUser(null);
+      localStorage.removeItem(USER_KEY);
+    };
+    window.addEventListener('ht_unauthorized', onUnauthorized);
+    return () => window.removeEventListener('ht_unauthorized', onUnauthorized);
+  }, []);
+
   const adopt = d => {
     setToken(d.token);
     setUser(d.user);
