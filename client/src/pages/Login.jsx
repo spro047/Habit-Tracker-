@@ -29,18 +29,6 @@ export default function Login() {
     setBusy(false);
   };
 
-  const useDemo = async () => {
-    setMode('login');
-    setErr('');
-    setBusy(true);
-    try {
-      await login('shashank@demo.com', 'demo1234');
-    } catch (ex) {
-      setErr(ex.message);
-    }
-    setBusy(false);
-  };
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10">
       <div className="neo-card w-full max-w-md">
@@ -72,12 +60,12 @@ export default function Login() {
             {mode === 'register' && (
               <div>
                 <label className="neo-label" htmlFor="lname">NAME</label>
-                <input id="lname" className="neo-input" value={name} onChange={e => setName(e.target.value)} autoComplete="name" placeholder="Shashank" required disabled={busy} />
+                <input id="lname" className="neo-input" value={name} onChange={e => setName(e.target.value)} autoComplete="name" required disabled={busy} />
               </div>
             )}
             <div>
               <label className="neo-label" htmlFor="lemail">EMAIL</label>
-              <input id="lemail" type="email" className="neo-input" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com" required disabled={busy} />
+              <input id="lemail" type="email" className="neo-input" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required disabled={busy} />
             </div>
             <div>
               <div className="flex items-baseline justify-between">
@@ -93,7 +81,6 @@ export default function Login() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                placeholder="••••••••"
                 required
                 minLength={6}
                 disabled={busy}
@@ -103,13 +90,6 @@ export default function Login() {
               {busy ? 'WAIT…' : mode === 'login' ? 'LOG IN' : 'CREATE ACCOUNT'}
             </button>
           </form>
-
-          <div className="mt-5 border-2 border-ink p-3 bg-bg">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-ink/50 mb-2">Just exploring?</p>
-            <button type="button" className="neo-btn neo-btn--green w-full text-xs" onClick={useDemo} disabled={busy}>
-              USE DEMO ACCOUNT
-            </button>
-          </div>
         </div>
       </div>
       <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-ink/40">Habit Tracker v1 · Neo-Brutalist</p>
