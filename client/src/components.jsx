@@ -19,7 +19,7 @@ export function ProgressBar({ pct, color = '#059669' }) {
   const stripes = 'repeating-linear-gradient(90deg, rgba(15,23,42,.3) 0 4px, transparent 4px 8px)';
   const w = Math.max(0, Math.min(100, pct));
   return (
-    <div className="border-[3px] border-ink bg-white h-6 w-full" role="progressbar" aria-valuenow={w} aria-valuemin={0} aria-valuemax={100}>
+    <div className="border-[3px] border-ink bg-card h-6 w-full" role="progressbar" aria-valuenow={w} aria-valuemin={0} aria-valuemax={100}>
       <div className="h-full" style={{ width: `${w}%`, background: `${stripes}, ${color}` }} />
     </div>
   );
@@ -33,7 +33,7 @@ export function CheckSquare({ checked, onClick, label }) {
       aria-label={label}
       aria-pressed={checked}
       className={`w-9 h-9 border-[3px] border-ink shrink-0 cursor-pointer flex items-center justify-center font-bold text-lg ${
-        checked ? 'bg-success text-white' : 'bg-white'
+        checked ? 'bg-success text-white' : 'bg-card'
       }`}
     >
       {checked ? '✓' : ''}
@@ -149,7 +149,7 @@ export function ScratchCard({ status, onAction, label }) {
 
 export function Modal({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 bg-ink/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="neo-card p-4 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-display text-lg">{title}</h2>
@@ -160,6 +160,23 @@ export function Modal({ title, onClose, children }) {
         {children}
       </div>
     </div>
+  );
+}
+
+export function ThemeToggle() {
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem('ht_theme');
+    if (saved) return saved === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark);
+    localStorage.setItem('ht_theme', dark ? 'dark' : 'light');
+  }, [dark]);
+  return (
+    <button type="button" className="neo-tag bg-card cursor-pointer" onClick={() => setDark(d => !d)} aria-pressed={dark}>
+      {dark ? 'LIGHT' : 'DARK'}
+    </button>
   );
 }
 
@@ -208,7 +225,7 @@ export function HabitForm({ initial, onSubmit, onCancel, submitLabel = 'CREATE H
               onClick={() => setColor(c)}
               aria-label={`Color ${c}`}
               aria-pressed={color === c}
-              className={`w-9 h-9 border-[3px] cursor-pointer ${color === c ? 'border-ink shadow-[3px_3px_0_0_#0F172A] scale-110' : 'border-ink/30'}`}
+              className={`w-9 h-9 border-[3px] cursor-pointer ${color === c ? 'border-ink shadow-[3px_3px_0_0_var(--color-ink)] scale-110' : 'border-ink/30'}`}
               style={{ background: c }}
             />
           ))}
@@ -218,7 +235,7 @@ export function HabitForm({ initial, onSubmit, onCancel, submitLabel = 'CREATE H
         <span className="neo-label">PRIORITY</span>
         <div className="flex gap-2">
           {PRIORITIES.map(p => (
-            <button key={p} type="button" onClick={() => setPriority(p)} aria-pressed={priority === p} className={`neo-tag cursor-pointer ${priority === p ? PRIORITY_COLOR[p] : 'bg-white'}`}>
+            <button key={p} type="button" onClick={() => setPriority(p)} aria-pressed={priority === p} className={`neo-tag cursor-pointer ${priority === p ? PRIORITY_COLOR[p] : 'bg-card'}`}>
               {p}
             </button>
           ))}
@@ -227,10 +244,10 @@ export function HabitForm({ initial, onSubmit, onCancel, submitLabel = 'CREATE H
       <div>
         <span className="neo-label">SCHEDULE</span>
         <div className="flex gap-2 mb-2">
-          <button type="button" onClick={() => setType('DAILY')} aria-pressed={type === 'DAILY'} className={`neo-tag cursor-pointer ${type === 'DAILY' ? 'bg-primary' : 'bg-white'}`}>
+          <button type="button" onClick={() => setType('DAILY')} aria-pressed={type === 'DAILY'} className={`neo-tag cursor-pointer ${type === 'DAILY' ? 'bg-primary' : 'bg-card'}`}>
             DAILY
           </button>
-          <button type="button" onClick={() => setType('WEEKLY')} aria-pressed={type === 'WEEKLY'} className={`neo-tag cursor-pointer ${type === 'WEEKLY' ? 'bg-primary' : 'bg-white'}`}>
+          <button type="button" onClick={() => setType('WEEKLY')} aria-pressed={type === 'WEEKLY'} className={`neo-tag cursor-pointer ${type === 'WEEKLY' ? 'bg-primary' : 'bg-card'}`}>
             SELECTED DAYS
           </button>
         </div>
@@ -242,7 +259,7 @@ export function HabitForm({ initial, onSubmit, onCancel, submitLabel = 'CREATE H
                 type="button"
                 onClick={() => toggleDay(dayNum(i))}
                 aria-pressed={days.includes(dayNum(i))}
-                className={`w-10 h-10 border-[3px] border-ink font-bold cursor-pointer ${days.includes(dayNum(i)) ? 'bg-ink text-bg' : 'bg-white'}`}
+                className={`w-10 h-10 border-[3px] border-ink font-bold cursor-pointer ${days.includes(dayNum(i)) ? 'bg-ink text-bg' : 'bg-card'}`}
               >
                 {d}
               </button>
@@ -282,7 +299,7 @@ export function TaskForm({ onSubmit, onCancel }) {
         <span className="neo-label">PRIORITY</span>
         <div className="flex gap-2">
           {PRIORITIES.map(p => (
-            <button key={p} type="button" onClick={() => setPriority(p)} aria-pressed={priority === p} className={`neo-tag cursor-pointer ${priority === p ? PRIORITY_COLOR[p] : 'bg-white'}`}>
+            <button key={p} type="button" onClick={() => setPriority(p)} aria-pressed={priority === p} className={`neo-tag cursor-pointer ${priority === p ? PRIORITY_COLOR[p] : 'bg-card'}`}>
               {p}
             </button>
           ))}

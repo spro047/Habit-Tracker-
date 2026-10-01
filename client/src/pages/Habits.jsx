@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { navigate } from '../router.jsx';
 import { Modal, HabitForm, Confirm, PriorityTag, weeklyLabel, Loading, Empty } from '../components.jsx';
 
-const CELL_COLORS = ['bg-white', 'bg-[#A7F3D0]', 'bg-[#34D399]', 'bg-[#059669]', 'bg-[#065F46]'];
+const CELL_COLORS = ['bg-card', 'bg-[#A7F3D0]', 'bg-[#34D399]', 'bg-[#059669]', 'bg-[#065F46]'];
 const cellColor = pct => (pct >= 76 ? CELL_COLORS[4] : pct >= 51 ? CELL_COLORS[3] : pct >= 26 ? CELL_COLORS[2] : pct >= 1 ? CELL_COLORS[1] : CELL_COLORS[0]);
 
 function YearHeatmap({ days }) {
@@ -27,7 +27,7 @@ function YearHeatmap({ days }) {
     <section className="neo-card p-4">
       <div className="flex items-baseline justify-between mb-2">
         <h2 className="font-display text-lg">CONSISTENCY</h2>
-        <span className="neo-tag bg-white">THIS YEAR</span>
+        <span className="neo-tag bg-card">THIS YEAR</span>
       </div>
       <p className="font-display text-3xl mb-4">
         {total} <span className="text-sm font-bold uppercase text-ink/60">habits completed</span>
@@ -122,7 +122,7 @@ export default function Habits({ onChanged }) {
               <div className="flex gap-2 mt-2">
                 <button
                   type="button"
-                  className="neo-tag bg-white cursor-pointer"
+                  className="neo-tag bg-card cursor-pointer"
                   onClick={e => {
                     e.stopPropagation();
                     setEditing(h);
@@ -132,7 +132,7 @@ export default function Habits({ onChanged }) {
                 </button>
                 <button
                   type="button"
-                  className="neo-tag bg-white cursor-pointer"
+                  className="neo-tag bg-card cursor-pointer"
                   onClick={e => {
                     e.stopPropagation();
                     setConfirmDel(h);

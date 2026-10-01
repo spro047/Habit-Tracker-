@@ -19,6 +19,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.dark {
+  --color-bg: #0f172a;
+  --color-ink: #f1f5f9;
+  --color-card: #1e293b;
+  --color-primary: #f59e0b;
+  --color-secondary: #f59e0b;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  color-scheme: dark;
+}
+.dark :is(.bg-primary, .bg-secondary):not(.text-white):not(.text-bg) {
+  color: #0f172a;
+}
+
 .neo-card {
   background: var(--color-card);
   border: 3px solid var(--color-ink);
@@ -28,7 +42,7 @@ body {
 .neo-btn {
   display: inline-block;
   background: var(--color-primary);
-  color: var(--color-ink);
+  color: #0f172a;
   border: 3px solid var(--color-ink);
   box-shadow: 3px 3px 0 0 var(--color-ink);
   padding: 0.5rem 1rem;
@@ -41,17 +55,18 @@ body {
 .neo-btn:hover { box-shadow: 2px 2px 0 0 var(--color-ink); }
 .neo-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 0 var(--color-ink); }
 .neo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.neo-btn--white { background: #ffffff; }
+.neo-btn--white { background: var(--color-card); color: var(--color-ink); }
 .neo-btn--green { background: var(--color-success); color: #ffffff; }
 .neo-btn--red { background: var(--color-danger); color: #ffffff; }
 
 .neo-input {
   width: 100%;
-  background: #ffffff;
+  background: var(--color-card);
   border: 3px solid var(--color-ink);
   padding: 0.5rem 0.75rem;
   font-family: var(--font-body);
   font-weight: 500;
+  color: var(--color-ink);
 }
 .neo-input:focus { outline: none; box-shadow: 0 0 0 3px var(--color-secondary); }
 

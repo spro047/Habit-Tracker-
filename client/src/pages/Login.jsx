@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useAuth } from '../store.jsx';
-import { Err, COLORS } from '../components.jsx';
+import { Err, COLORS, ThemeToggle } from '../components.jsx';
 
 const MODE_BTN = 'border-[3px] border-ink font-bold uppercase tracking-wider text-sm py-2.5 cursor-pointer';
 const MODE_ACTIVE = 'bg-ink text-bg';
-const MODE_IDLE = 'bg-white text-ink';
+const MODE_IDLE = 'bg-card text-ink';
 
 export default function Login() {
   const { login, register } = useAuth();
@@ -33,10 +33,13 @@ export default function Login() {
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10">
       <div className="neo-card w-full max-w-md">
         <div className="border-b-[3px] border-ink p-5">
-          <div className="flex gap-1.5 mb-4">
-            {COLORS.map(c => (
-              <span key={c} className="w-8 h-3 border-2 border-ink" style={{ background: c }} aria-hidden="true" />
-            ))}
+          <div className="flex gap-1.5 mb-4 items-center justify-between">
+            <div className="flex gap-1.5">
+              {COLORS.map(c => (
+                <span key={c} className="w-8 h-3 border-2 border-ink" style={{ background: c }} aria-hidden="true" />
+              ))}
+            </div>
+            <ThemeToggle />
           </div>
           <h1 className="font-display text-3xl leading-none">
             HABIT<span className="text-primary">/</span>TRACKER
@@ -70,7 +73,7 @@ export default function Login() {
             <div>
               <div className="flex items-baseline justify-between">
                 <label className="neo-label" htmlFor="lpass">PASSWORD</label>
-                <button type="button" className="neo-tag bg-white cursor-pointer mb-1" onClick={() => setShow(s => !s)} aria-pressed={show}>
+                <button type="button" className="neo-tag bg-card cursor-pointer mb-1" onClick={() => setShow(s => !s)} aria-pressed={show}>
                   {show ? 'HIDE' : 'SHOW'}
                 </button>
               </div>

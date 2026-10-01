@@ -75,7 +75,7 @@ export default function Home({ refreshKey, onChanged }) {
       <section>
         <div className="flex items-baseline justify-between mb-2">
           <h2 className="font-display text-lg">TODAY'S HIT LIST</h2>
-          <span className="neo-tag bg-white">{String(remaining).padStart(2, '0')} REMAINING</span>
+          <span className="neo-tag bg-card">{String(remaining).padStart(2, '0')} REMAINING</span>
         </div>
         {habits.length === 0 && tasks.length === 0 && <Empty text="Nothing scheduled. Tap + to add." />}
         <div className="space-y-3">
@@ -90,7 +90,7 @@ export default function Home({ refreshKey, onChanged }) {
               </button>
               <PriorityTag p={h.priority} />
               {h.todayStatus !== 'COMPLETED' && (
-                <button type="button" className="neo-tag bg-white cursor-pointer" onClick={() => skipHabit(h)} aria-label={`Skip ${h.name}`}>
+                <button type="button" className="neo-tag bg-card cursor-pointer" onClick={() => skipHabit(h)} aria-label={`Skip ${h.name}`}>
                   SKIP
                 </button>
               )}
@@ -104,7 +104,7 @@ export default function Home({ refreshKey, onChanged }) {
                 <p className="text-xs font-bold uppercase text-ink/50">TASK</p>
               </div>
               <PriorityTag p={t.priority} />
-              <button type="button" className="neo-tag bg-white cursor-pointer" onClick={() => delTask(t)} aria-label={`Delete ${t.title}`}>
+              <button type="button" className="neo-tag bg-card cursor-pointer" onClick={() => delTask(t)} aria-label={`Delete ${t.title}`}>
                 ✕
               </button>
             </div>

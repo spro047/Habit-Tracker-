@@ -8,7 +8,7 @@ const DAY_CLASS = {
   COMPLETED: 'bg-success text-white',
   SKIPPED: 'bg-secondary/50 text-ink',
   MISSED: 'bg-danger text-white',
-  NOT_SCHEDULED: 'bg-white text-ink/30',
+  NOT_SCHEDULED: 'bg-card text-ink/30',
 };
 
 export default function HabitDetail({ id, onChanged }) {

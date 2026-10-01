@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AuthProvider, useAuth } from './store.jsx';
 import { useRoute, navigate } from './router.jsx';
 import { api } from './api.js';
-import { Modal, HabitForm, TaskForm, Loading } from './components.jsx';
+import { Modal, HabitForm, TaskForm, Loading, ThemeToggle } from './components.jsx';
 import Login from './pages/Login.jsx';
 import Home from './pages/Home.jsx';
 import Habits from './pages/Habits.jsx';
@@ -40,8 +40,11 @@ function Shell() {
         <button type="button" className="font-display text-xl cursor-pointer" onClick={() => navigate('#/')} aria-label="Go home">
           HABIT<span className="text-primary">/</span>TRACKER
         </button>
-        <span className="text-xs font-bold uppercase text-ink/60">{user?.name}</span>
-        <button type="button" className="neo-btn neo-btn--white text-xs py-1" onClick={logout}>LOGOUT</button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold uppercase text-ink/60">{user?.name}</span>
+          <ThemeToggle />
+          <button type="button" className="neo-btn neo-btn--white text-xs py-1" onClick={logout}>LOGOUT</button>
+        </div>
       </header>
       <main>{view}</main>
 
@@ -68,7 +71,7 @@ function Shell() {
       )}
       <button
         type="button"
-        className="fixed bottom-20 right-5 w-14 h-14 bg-primary border-[3px] border-ink shadow-[4px_4px_0_0_#0F172A] font-display text-2xl z-40 cursor-pointer active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+        className="fixed bottom-20 right-5 w-14 h-14 bg-primary border-[3px] border-ink shadow-[4px_4px_0_0_var(--color-ink)] font-display text-2xl z-40 cursor-pointer active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
         onClick={() => setAddOpen(addOpen === 'menu' ? null : 'menu')}
         aria-label="Add item"
         aria-expanded={addOpen === 'menu'}

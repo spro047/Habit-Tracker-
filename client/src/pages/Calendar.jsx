@@ -10,7 +10,7 @@ const heat = pct => {
   if (pct >= 51) return 'bg-primary text-white';
   if (pct >= 26) return 'bg-secondary text-ink';
   if (pct >= 1) return 'bg-secondary/40 text-ink';
-  return 'bg-white text-ink/40';
+  return 'bg-card text-ink/40';
 };
 
 export default function Calendar() {
@@ -90,7 +90,7 @@ export default function Calendar() {
         </div>
       </div>
       <div className="flex flex-wrap gap-2 text-[10px] font-bold uppercase">
-        <span className="neo-tag bg-white">0%</span>
+        <span className="neo-tag bg-card">0%</span>
         <span className="neo-tag bg-secondary/40">1–25%</span>
         <span className="neo-tag bg-secondary">26–50%</span>
         <span className="neo-tag bg-primary">51–75%</span>
