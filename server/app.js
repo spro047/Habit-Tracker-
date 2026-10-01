@@ -141,6 +141,7 @@ app.get('/api/habits/:id', auth, ah(async (req, res) => {
   }
   res.json({
     habit: habitJson(row),
+    todayStatus: rec.get(today) || 'PENDING',
     stats: {
       currentStreak: streaks.current,
       bestStreak: streaks.best,

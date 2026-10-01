@@ -186,7 +186,7 @@ export function ThemePicker() {
   }, [theme]);
   return (
     <>
-      <button type="button" className="neo-tag bg-card cursor-pointer" onClick={() => setOpen(true)} aria-haspopup="dialog">
+      <button type="button" className="neo-btn neo-btn--white text-xs py-1" onClick={() => setOpen(true)} aria-haspopup="dialog">
         THEME
       </button>
       {open && (
