@@ -189,5 +189,5 @@ export function Empty({ text }) {
 }
 
 export function Err({ msg }) {
-  return msg ? <div className="border-[3px] border-danger bg-danger text-white p-2 font-bold uppercase text-sm mb-3">{msg}</div> : null;
+  return msg ? <div role="alert" className="border-[3px] border-danger bg-danger text-white p-2 font-bold uppercase text-sm mb-3">{msg}</div> : null;
 }
