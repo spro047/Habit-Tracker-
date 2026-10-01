@@ -264,7 +264,7 @@ app.get('/api/dashboard/today', auth, ah(async (req, res) => {
       vsYesterday: completed - yestDone,
     },
     habits,
-    tasks,
+    tasks: taskList,
     bestStreak: Math.max(0, ...habits.map(h => h.streak.best)),
   });
 }));
