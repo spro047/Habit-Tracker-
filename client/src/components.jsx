@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export const PRIORITIES = ['HIGH', 'MEDIUM', 'LOW'];
 export const PRIORITY_COLOR = {
@@ -38,6 +38,112 @@ export function CheckSquare({ checked, onClick, label }) {
     >
       {checked ? '✓' : ''}
     </button>
+  );
+}
+
+const SCRATCH_META = {
+  PENDING: { color: '#C8C8C8', label: 'SCRATCH', reveal: '·', revealCls: 'text-ink/40' },
+  COMPLETED: { color: '#059669', label: 'DONE ✓', reveal: '✓', revealCls: 'text-success' },
+  SKIPPED: { color: '#DC2626', label: 'SKIPPED ⊘', reveal: '⊘', revealCls: 'text-danger' },
+};
+
+export function ScratchCard({ status, onAction, label }) {
+  const canvasRef = useRef(null);
+  const movedRef = useRef(false);
+  const doneRef = useRef(false);
+  const lastSampleRef = useRef(0);
+  const meta = SCRATCH_META[status] || SCRATCH_META.PENDING;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = meta.color;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = 'rgba(15,23,42,0.3)';
+    ctx.lineWidth = 2;
+    for (let x = -canvas.height; x < canvas.width + canvas.height; x += 14) {
+      ctx.beginPath();
+      ctx.moveTo(x, canvas.height);
+      ctx.lineTo(x + canvas.height, 0);
+      ctx.stroke();
+    }
+    ctx.fillStyle = status === 'PENDING' ? '#0F172A' : '#FFFFFF';
+    ctx.font = '700 11px "Space Grotesk", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(meta.label, canvas.width / 2, canvas.height / 2);
+    doneRef.current = false;
+  }, [meta.color, meta.label, status]);
+
+  const erase = (x, y) => {
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(x, y, 14, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  const sampleProgress = () => {
+    const canvas = canvasRef.current;
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let clear = 0, total = 0;
+    for (let i = 3; i < data.length; i += 16) {
+      total++;
+      if (data[i] === 0) clear++;
+    }
+    return clear / total;
+  };
+
+  const handleMove = e => {
+    const canvas = canvasRef.current;
+    if (e.buttons !== 1 && e.pointerType === 'mouse') return;
+    const rect = canvas.getBoundingClientRect();
+    movedRef.current = true;
+    erase(e.clientX - rect.left, e.clientY - rect.top);
+    const now = Date.now();
+    if (now - lastSampleRef.current > 120 && !doneRef.current && status === 'PENDING' && sampleProgress() > 0.4) {
+      lastSampleRef.current = now;
+      doneRef.current = true;
+      onAction();
+    }
+  };
+
+  return (
+    <div className="relative w-[72px] h-[72px] shrink-0">
+      <div
+        className={`absolute inset-0 border-[3px] border-ink flex items-center justify-center font-display text-3xl bg-bg ${meta.revealCls}`}
+        aria-hidden="true"
+      >
+        {meta.reveal}
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={72}
+        height={72}
+        role="button"
+        tabIndex={0}
+        aria-label={label}
+        className="absolute inset-0 w-[72px] h-[72px] cursor-pointer touch-none"
+        onPointerDown={e => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          movedRef.current = false;
+          const rect = e.currentTarget.getBoundingClientRect();
+          erase(e.clientX - rect.left, e.clientY - rect.top);
+        }}
+        onPointerMove={handleMove}
+        onClick={() => {
+          if (!movedRef.current) onAction();
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onAction();
+          }
+        }}
+      />
+    </div>
   );
 }
 

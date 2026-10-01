@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../store.jsx';
 import { navigate } from '../router.jsx';
-import { ProgressBar, PriorityTag, CheckSquare, Loading, Empty } from '../components.jsx';
+import { ProgressBar, PriorityTag, CheckSquare, ScratchCard, Loading, Empty } from '../components.jsx';
 
 export default function Home({ refreshKey, onChanged }) {
   const { user } = useAuth();
@@ -81,7 +81,7 @@ export default function Home({ refreshKey, onChanged }) {
         <div className="space-y-3">
           {habits.map(h => (
             <div key={h.id} className="neo-card p-3 flex items-center gap-3">
-              <CheckSquare checked={h.todayStatus === 'COMPLETED'} onClick={() => toggleHabit(h)} label={`Complete ${h.name}`} />
+              <ScratchCard status={h.todayStatus} label={`Complete ${h.name}`} onAction={() => toggleHabit(h)} />
               <button type="button" className="min-w-0 flex-1 text-left cursor-pointer" onClick={() => navigate(`#/habit/${h.id}`)}>
                 <p className="font-bold uppercase truncate">{h.name}</p>
                 <p className="text-xs font-bold uppercase text-ink/50">
