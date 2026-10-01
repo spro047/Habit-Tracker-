@@ -2,17 +2,23 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { encrypt, decrypt, tag } from './enc.js';
-import { db, oid, addDays, todayStr, calcStreaks, isScheduled, habitJson, userTimezone, decryptHabit } from './db.js';
+import { db, oid, addDays, todayStr, calcStreaks, isScheduled, habitJson, decryptHabit } from './db.js';
 
 export const app = express();
 app.use(express.json());
 const SECRET = process.env.JWT_SECRET || 'dev-secret';
-const sign = id => jwt.sign({ sub: id }, SECRET, { expiresIn: '30d' });
+const sign = (id, tz) => jwt.sign({ sub: id, tz }, SECRET, { expiresIn: '30d' });
 const auth = (req, res, next) => {
   const h = req.headers.authorization || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : null;
-  try { req.userId = jwt.verify(token, SECRET).sub; next(); }
-  catch { res.status(401).json({ error: 'Unauthorized' }); }
+  try {
+    const payload = jwt.verify(token, SECRET);
+    req.userId = payload.sub;
+    req.tz = payload.tz || 'Asia/Kolkata';
+    next();
+  } catch {
+    res.status(401).json({ error: 'Unauthorized' });
+  }
 };
 const ah = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const validDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00Z').getTime());
@@ -37,7 +43,7 @@ app.post('/api/auth/register', ah(async (req, res) => {
     name: name.trim(), email: em, passwordHash: bcrypt.hashSync(password, 10), timezone: 'Asia/Kolkata', createdAt: new Date(),
   });
   const user = { id: r.insertedId.toString(), name: name.trim(), email: em };
-  res.status(201).json({ token: sign(user.id), user });
+  res.status(201).json({ token: sign(user.id, 'Asia/Kolkata'), user });
 }));
 
 app.post('/api/auth/login', ah(async (req, res) => {
@@ -45,7 +51,7 @@ app.post('/api/auth/login', ah(async (req, res) => {
   const row = await db.collection('users').findOne({ email: (email || '').toLowerCase() });
   if (!row || !bcrypt.compareSync(password || '', row.passwordHash)) return res.status(401).json({ error: 'Invalid credentials' });
   const user = { id: row._id.toString(), name: row.name, email: row.email };
-  res.json({ token: sign(user.id), user });
+  res.json({ token: sign(user.id, row.timezone), user });
 }));
 
 app.get('/api/auth/me', auth, ah(async (req, res) => {
@@ -56,12 +62,11 @@ app.get('/api/auth/me', auth, ah(async (req, res) => {
 
 // ---- HABITS ----
 app.get('/api/habits', auth, ah(async (req, res) => {
-  const [tz, rows, allRecs] = await Promise.all([
-    userTimezone(req.userId),
+  const today = todayStr(req.tz || 'Asia/Kolkata');
+  const [rows, allRecs] = await Promise.all([
     db.collection('habits').find({ userId: req.userId, status: { $ne: 'ARCHIVED' } }, { batchSize: 5000 }).sort({ _id: 1 }).toArray(),
     db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
   ]);
-  const today = todayStr(tz);
   const habits = rows.map(decryptHabit);
   const byHabit = new Map();
   for (const r of allRecs) {
@@ -101,9 +106,9 @@ app.post('/api/habits', auth, ah(async (req, res) => {
 }));
 
 app.get('/api/habits/:id', auth, ah(async (req, res) => {
-  const [row, tz] = await Promise.all([getHabit(req, res), userTimezone(req.userId)]);
+  const row = await getHabit(req, res);
   if (!row) return;
-  const today = todayStr(tz);
+  const today = todayStr(req.tz || 'Asia/Kolkata');
   const recs = await db.collection('habit_completions').find({ habitId: row._id, userId: req.userId }).toArray();
   const rec = new Map(recs.map(r => [decrypt(r.date), decrypt(r.status)]));
   const streaks = calcStreaks(row, rec, today);
@@ -181,7 +186,7 @@ app.post('/api/habits/:id/complete', auth, ah(async (req, res) => {
   const id = oid(req.params.id);
   const row = id ? await db.collection('habits').findOne({ _id: id, userId: req.userId }, { projection: { _id: 1 } }) : null;
   if (!row) return res.status(404).json({ error: 'Habit not found' });
-  const date = dateOf(req) || todayStr(await userTimezone(req.userId));
+  const date = dateOf(req) || todayStr(req.tz || 'Asia/Kolkata');
   const dateTag = tag(row._id, date);
   await db.collection('habit_completions').updateOne(
     { habitId: row._id, dateTag },
@@ -195,7 +200,7 @@ app.post('/api/habits/:id/skip', auth, ah(async (req, res) => {
   const id = oid(req.params.id);
   const row = id ? await db.collection('habits').findOne({ _id: id, userId: req.userId }, { projection: { _id: 1 } }) : null;
   if (!row) return res.status(404).json({ error: 'Habit not found' });
-  const date = dateOf(req) || todayStr(await userTimezone(req.userId));
+  const date = dateOf(req) || todayStr(req.tz || 'Asia/Kolkata');
   const dateTag = tag(row._id, date);
   await db.collection('habit_completions').updateOne(
     { habitId: row._id, dateTag },
@@ -207,19 +212,19 @@ app.post('/api/habits/:id/skip', auth, ah(async (req, res) => {
 
 app.delete('/api/habits/:id/completion', auth, ah(async (req, res) => {
   const id = oid(req.params.id);
-  const date = dateOf(req) || todayStr(await userTimezone(req.userId));
+  const date = dateOf(req) || todayStr(req.tz || 'Asia/Kolkata');
   await db.collection('habit_completions').deleteOne({ habitId: id, userId: req.userId, dateTag: tag(id, date) });
   res.status(204).end();
 }));
 
 // ---- DASHBOARD ----
 app.get('/api/dashboard/today', auth, ah(async (req, res) => {
-  const [tz, rows, allRecs, tasks] = await Promise.all([
-    userTimezone(req.userId),
+  const [rows, allRecs, tasks] = await Promise.all([
     db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).toArray(),
     db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
     db.collection('tasks').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
   ]);
+  const tz = req.tz || 'Asia/Kolkata';
   const today = todayStr(tz);
   const yest = addDays(today, -1);
   const todayMap = new Map();
@@ -297,7 +302,7 @@ app.delete('/api/tasks/:id', auth, ah(async (req, res) => {
 
 // ---- CALENDAR ----
 app.get('/api/calendar/month', auth, ah(async (req, res) => {
-  const now = todayStr(await userTimezone(req.userId));
+  const now = todayStr(req.tz || 'Asia/Kolkata');
   const year = parseInt(req.query.year, 10) || +now.slice(0, 4);
   const qm = parseInt(req.query.month, 10);
   const m = Number.isInteger(qm) && qm >= 0 && qm <= 11 ? qm : +now.slice(5, 7) - 1;
@@ -327,7 +332,7 @@ app.get('/api/calendar/month', auth, ah(async (req, res) => {
 }));
 
 app.get('/api/calendar/year', auth, ah(async (req, res) => {
-  const now = todayStr(await userTimezone(req.userId));
+  const now = todayStr(req.tz || 'Asia/Kolkata');
   const year = parseInt(req.query.year, 10) || +now.slice(0, 4);
   const [rows, allRecs] = await Promise.all([
     db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).toArray(),
