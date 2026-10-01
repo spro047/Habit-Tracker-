@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AuthProvider, useAuth } from './store.jsx';
 import { useRoute, navigate } from './router.jsx';
 import { api } from './api.js';
-import { Modal, HabitForm, TaskForm, Loading, ThemeToggle } from './components.jsx';
+import { Modal, HabitForm, TaskForm, Loading, ThemePicker } from './components.jsx';
 import Login from './pages/Login.jsx';
 import Home from './pages/Home.jsx';
 import Habits from './pages/Habits.jsx';
@@ -42,7 +42,7 @@ function Shell() {
         </button>
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold uppercase text-ink/60">{user?.name}</span>
-          <ThemeToggle />
+          <ThemePicker />
           <button type="button" className="neo-btn neo-btn--white text-xs py-1" onClick={logout}>LOGOUT</button>
         </div>
       </header>

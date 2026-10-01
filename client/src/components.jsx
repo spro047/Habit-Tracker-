@@ -163,20 +163,58 @@ export function Modal({ title, onClose, children }) {
   );
 }
 
-export function ThemeToggle() {
-  const [dark, setDark] = useState(() => {
+const THEMES = [
+  { id: 'classic', name: 'CLASSIC', colors: ['#FFFBEB', '#0F172A', '#D97706', '#059669', '#DC2626'] },
+  { id: 'dark', name: 'DARK', colors: ['#0F172A', '#F1F5F9', '#F59E0B', '#10B981', '#EF4444'] },
+  { id: 'ocean', name: 'OCEAN', colors: ['#EFF6FF', '#1E3A8A', '#F59E0B', '#059669', '#DC2626'] },
+  { id: 'sunset', name: 'SUNSET', colors: ['#FFF7ED', '#7C2D12', '#EA580C', '#059669', '#DC2626'] },
+  { id: 'matrix', name: 'MATRIX', colors: ['#052E16', '#D1FAE5', '#A3E635', '#22C55E', '#EF4444'] },
+  { id: 'violet', name: 'VIOLET', colors: ['#FAF5FF', '#4C1D95', '#D97706', '#059669', '#DC2626'] },
+];
+
+export function ThemePicker() {
+  const [open, setOpen] = useState(false);
+  const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('ht_theme');
-    if (saved) return saved === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return THEMES.some(t => t.id === saved) ? saved : 'classic';
   });
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-    localStorage.setItem('ht_theme', dark ? 'dark' : 'light');
-  }, [dark]);
+    const root = document.documentElement;
+    root.classList.remove(...THEMES.map(t => `theme-${t.id}`));
+    if (theme !== 'classic') root.classList.add(`theme-${theme}`);
+    localStorage.setItem('ht_theme', theme);
+  }, [theme]);
   return (
-    <button type="button" className="neo-tag bg-card cursor-pointer" onClick={() => setDark(d => !d)} aria-pressed={dark}>
-      {dark ? 'LIGHT' : 'DARK'}
-    </button>
+    <>
+      <button type="button" className="neo-tag bg-card cursor-pointer" onClick={() => setOpen(true)} aria-haspopup="dialog">
+        THEME
+      </button>
+      {open && (
+        <Modal title="PICK A THEME" onClose={() => setOpen(false)}>
+          <div className="grid grid-cols-2 gap-2">
+            {THEMES.map(t => (
+              <button
+                key={t.id}
+                type="button"
+                className={`border-[3px] border-ink p-2 cursor-pointer text-left ${theme === t.id ? 'bg-primary' : 'bg-card'}`}
+                onClick={() => {
+                  setTheme(t.id);
+                  setOpen(false);
+                }}
+                aria-pressed={theme === t.id}
+              >
+                <span className="font-bold uppercase text-xs">{t.name}</span>
+                <span className="flex gap-1 mt-2" aria-hidden="true">
+                  {t.colors.map(c => (
+                    <span key={c} className="w-5 h-4 border-2 border-ink" style={{ background: c }} />
+                  ))}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
 

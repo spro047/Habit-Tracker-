@@ -19,7 +19,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.dark {
+.theme-dark {
   --color-bg: #0f172a;
   --color-ink: #f1f5f9;
   --color-card: #1e293b;
@@ -29,7 +29,44 @@ body {
   --color-danger: #ef4444;
   color-scheme: dark;
 }
-.dark :is(.bg-primary, .bg-secondary):not(.text-white):not(.text-bg) {
+.theme-ocean {
+  --color-bg: #eff6ff;
+  --color-ink: #1e3a8a;
+  --color-card: #ffffff;
+  --color-primary: #f59e0b;
+  --color-secondary: #f59e0b;
+  --color-success: #059669;
+  --color-danger: #dc2626;
+}
+.theme-sunset {
+  --color-bg: #fff7ed;
+  --color-ink: #7c2d12;
+  --color-card: #ffffff;
+  --color-primary: #ea580c;
+  --color-secondary: #f59e0b;
+  --color-success: #059669;
+  --color-danger: #dc2626;
+}
+.theme-matrix {
+  --color-bg: #052e16;
+  --color-ink: #d1fae5;
+  --color-card: #064e3b;
+  --color-primary: #a3e635;
+  --color-secondary: #84cc16;
+  --color-success: #22c55e;
+  --color-danger: #ef4444;
+  color-scheme: dark;
+}
+.theme-violet {
+  --color-bg: #faf5ff;
+  --color-ink: #4c1d95;
+  --color-card: #ffffff;
+  --color-primary: #d97706;
+  --color-secondary: #f59e0b;
+  --color-success: #059669;
+  --color-danger: #dc2626;
+}
+:is(.bg-primary, .bg-secondary):not(.text-white):not(.text-bg) {
   color: #0f172a;
 }
 

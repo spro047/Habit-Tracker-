@@ -13,7 +13,7 @@
     <script>
       (function () {
         var t = localStorage.getItem('ht_theme');
-        if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
+        if (t && t !== 'classic' && t !== 'light') document.documentElement.classList.add('theme-' + t);
       })();
     </script>
   </head>

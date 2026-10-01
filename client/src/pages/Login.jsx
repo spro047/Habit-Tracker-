@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../store.jsx';
-import { Err, COLORS, ThemeToggle } from '../components.jsx';
+import { Err, COLORS, ThemePicker } from '../components.jsx';
 
 const MODE_BTN = 'border-[3px] border-ink font-bold uppercase tracking-wider text-sm py-2.5 cursor-pointer';
 const MODE_ACTIVE = 'bg-ink text-bg';
@@ -39,7 +39,7 @@ export default function Login() {
                 <span key={c} className="w-8 h-3 border-2 border-ink" style={{ background: c }} aria-hidden="true" />
               ))}
             </div>
-            <ThemeToggle />
+            <ThemePicker />
           </div>
           <h1 className="font-display text-3xl leading-none">
             HABIT<span className="text-primary">/</span>TRACKER
