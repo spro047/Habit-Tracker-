@@ -20,7 +20,7 @@ export default function Home({ refreshKey, onChanged }) {
 
   const { greeting, progress, habits, tasks, bestStreak } = dash;
   const firstName = (user?.name || '').split(' ')[0].toUpperCase();
-  const remaining = habits.filter(h => h.todayStatus === 'PENDING').length;
+  const remaining = habits.filter(h => h.todayStatus === 'PENDING').length + tasks.filter(t => t.status === 'OPEN').length;
 
   const toggleHabit = async h => {
     if (h.todayStatus === 'COMPLETED') await api(`/api/habits/${h.id}/completion`, { method: 'DELETE' });
