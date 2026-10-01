@@ -135,14 +135,18 @@ app.get('/api/habits/:id', auth, ah(async (req, res) => {
   const tz = await userTimezone(req.userId);
   const today = todayStr(tz);
   const streaks = await getStreaks(row, req.userId);
+  const dow = new Date(today + 'T00:00:00Z').getUTCDay();
+  const monday = addDays(today, -(dow === 0 ? 6 : dow - 1));
+  const sunday = addDays(monday, 6);
+  const month = +today.slice(5, 7);
+  const monthEnd = `${today.slice(0, 7)}-${String(new Date(+today.slice(0, 4), month, 0).getDate()).padStart(2, '0')}`;
   res.json({
     habit: habitJson(row),
     stats: {
       currentStreak: streaks.current,
       bestStreak: streaks.best,
-      weekPct: await pctFor(row, req.userId, addDays(today, -6), today),
-      monthPct: await pctFor(row, req.userId, today.slice(0, 8) + '01', today),
-      allTimePct: await pctFor(row, req.userId, row.startDate, today),
+      weekPct: await pctFor(row, req.userId, monday, sunday),
+      monthPct: await pctFor(row, req.userId, today.slice(0, 8) + '01', monthEnd),
     },
     history: await monthHistory(row, req.userId),
   });
@@ -169,8 +173,10 @@ app.patch('/api/habits/:id', auth, ah(async (req, res) => {
 }));
 
 app.delete('/api/habits/:id', auth, ah(async (req, res) => {
-  const r = await db.collection('habits').updateOne({ _id: oid(req.params.id), userId: req.userId }, { $set: { status: 'ARCHIVED' } });
-  if (!r.matchedCount) return res.status(404).json({ error: 'Habit not found' });
+  const id = oid(req.params.id);
+  const r = await db.collection('habits').deleteOne({ _id: id, userId: req.userId });
+  if (!r.deletedCount) return res.status(404).json({ error: 'Habit not found' });
+  await db.collection('habit_completions').deleteMany({ habitId: id });
   res.status(204).end();
 }));
 

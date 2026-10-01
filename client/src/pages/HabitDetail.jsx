@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { navigate } from '../router.jsx';
-import { Modal, HabitForm, ProgressBar, PriorityTag, weeklyLabel, Loading } from '../components.jsx';
+import { Modal, HabitForm, Confirm, ProgressBar, PriorityTag, weeklyLabel, Loading } from '../components.jsx';
 
 const DAY_GLYPH = { COMPLETED: '✓', SKIPPED: '⊘', MISSED: '✗', NOT_SCHEDULED: '·' };
 const DAY_CLASS = {
@@ -14,6 +14,7 @@ const DAY_CLASS = {
 export default function HabitDetail({ id, onChanged }) {
   const [data, setData] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
   const [err, setErr] = useState('');
 
   const load = () =>
@@ -34,7 +35,7 @@ export default function HabitDetail({ id, onChanged }) {
     load();
     onChanged();
   };
-  const archive = async () => {
+  const removeHabit = async () => {
     await api(`/api/habits/${id}`, { method: 'DELETE' });
     navigate('#/habits');
     onChanged();
@@ -59,7 +60,6 @@ export default function HabitDetail({ id, onChanged }) {
         {[
           ['THIS WEEK', stats.weekPct],
           ['THIS MONTH', stats.monthPct],
-          ['ALL TIME', stats.allTimePct],
         ].map(([label, pct]) => (
           <div key={label}>
             <div className="flex justify-between text-xs font-bold uppercase mb-1">
@@ -101,8 +101,8 @@ export default function HabitDetail({ id, onChanged }) {
           <button type="button" className="neo-btn flex-1 text-xs" onClick={() => setEditing(true)}>
             EDIT
           </button>
-          <button type="button" className="neo-btn neo-btn--red flex-1 text-xs" onClick={archive}>
-            ARCHIVE
+          <button type="button" className="neo-btn neo-btn--red flex-1 text-xs" onClick={() => setConfirmDel(true)}>
+            DELETE HABIT
           </button>
         </div>
       </section>
@@ -111,6 +111,14 @@ export default function HabitDetail({ id, onChanged }) {
         <Modal title="EDIT HABIT" onClose={() => setEditing(false)}>
           <HabitForm initial={habit} submitLabel="SAVE" onSubmit={save} onCancel={() => setEditing(false)} />
         </Modal>
+      )}
+      {confirmDel && (
+        <Confirm
+          title={`DELETE ${habit.name.toUpperCase()}?`}
+          message="This permanently removes the habit and all its history."
+          onConfirm={removeHabit}
+          onCancel={() => setConfirmDel(false)}
+        />
       )}
     </div>
   );

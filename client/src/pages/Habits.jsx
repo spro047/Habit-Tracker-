@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { navigate } from '../router.jsx';
-import { Modal, HabitForm, PriorityTag, weeklyLabel, Loading, Empty } from '../components.jsx';
+import { Modal, HabitForm, Confirm, PriorityTag, weeklyLabel, Loading, Empty } from '../components.jsx';
 
 const CELL_COLORS = ['bg-white', 'bg-[#A7F3D0]', 'bg-[#34D399]', 'bg-[#059669]', 'bg-[#065F46]'];
 const cellColor = pct => (pct >= 76 ? CELL_COLORS[4] : pct >= 51 ? CELL_COLORS[3] : pct >= 26 ? CELL_COLORS[2] : pct >= 1 ? CELL_COLORS[1] : CELL_COLORS[0]);
@@ -65,6 +65,7 @@ export default function Habits({ onChanged }) {
   const [yearDays, setYearDays] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
   const [err, setErr] = useState('');
 
   const load = () =>
@@ -84,8 +85,9 @@ export default function Habits({ onChanged }) {
     load();
     onChanged();
   };
-  const archive = async id => {
+  const removeHabit = async id => {
     await api(`/api/habits/${id}`, { method: 'DELETE' });
+    setConfirmDel(null);
     load();
     onChanged();
   };
@@ -133,10 +135,10 @@ export default function Habits({ onChanged }) {
                   className="neo-tag bg-white cursor-pointer"
                   onClick={e => {
                     e.stopPropagation();
-                    archive(h.id);
+                    setConfirmDel(h);
                   }}
                 >
-                  ARCHIVE
+                  DELETE
                 </button>
               </div>
             </div>
@@ -161,6 +163,14 @@ export default function Habits({ onChanged }) {
         <Modal title="EDIT HABIT" onClose={() => setEditing(null)}>
           <HabitForm initial={editing} submitLabel="SAVE" onSubmit={data => save(editing.id, data)} onCancel={() => setEditing(null)} />
         </Modal>
+      )}
+      {confirmDel && (
+        <Confirm
+          title={`DELETE ${confirmDel.name.toUpperCase()}?`}
+          message="This permanently removes the habit and all its history."
+          onConfirm={() => removeHabit(confirmDel.id)}
+          onCancel={() => setConfirmDel(null)}
+        />
       )}
     </div>
   );

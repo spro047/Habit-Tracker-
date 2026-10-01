@@ -89,9 +89,11 @@ export default function Home({ refreshKey, onChanged }) {
                 </p>
               </button>
               <PriorityTag p={h.priority} />
-              <button type="button" className="neo-tag bg-white cursor-pointer" onClick={() => skipHabit(h)} aria-label={`Skip ${h.name}`}>
-                SKIP
-              </button>
+              {h.todayStatus !== 'COMPLETED' && (
+                <button type="button" className="neo-tag bg-white cursor-pointer" onClick={() => skipHabit(h)} aria-label={`Skip ${h.name}`}>
+                  SKIP
+                </button>
+              )}
             </div>
           ))}
           {tasks.map(t => (

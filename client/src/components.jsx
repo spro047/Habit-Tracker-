@@ -163,6 +163,18 @@ export function Modal({ title, onClose, children }) {
   );
 }
 
+export function Confirm({ title = 'ARE YOU SURE?', message, confirmLabel = 'DELETE', onConfirm, onCancel }) {
+  return (
+    <Modal title={title} onClose={onCancel}>
+      <p className="font-bold uppercase text-sm mb-4">{message}</p>
+      <div className="flex gap-2">
+        <button type="button" className="neo-btn neo-btn--red flex-1" onClick={onConfirm}>{confirmLabel}</button>
+        <button type="button" className="neo-btn neo-btn--white flex-1" onClick={onCancel}>CANCEL</button>
+      </div>
+    </Modal>
+  );
+}
+
 export function HabitForm({ initial, onSubmit, onCancel, submitLabel = 'CREATE HABIT' }) {
   const [name, setName] = useState(initial?.name || '');
   const [color, setColor] = useState(initial?.color || COLORS[0]);
