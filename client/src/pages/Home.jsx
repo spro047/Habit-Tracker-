@@ -9,6 +9,17 @@ export default function Home({ refreshKey, onChanged }) {
   const { user } = useAuth();
   const [dash, setDash] = useState(null);
   const [err, setErr] = useState('');
+  const statusRank = { PENDING: 0, COMPLETED: 1, SKIPPED: 2 };
+  const displayHabits = dash ? [...dash.habits].sort((a, b) => (statusRank[a.todayStatus] ?? 0) - (statusRank[b.todayStatus] ?? 0)) : [];
+  const displayTasks = dash ? [...dash.tasks].sort((a, b) => (a.status === 'DONE' ? 1 : 0) - (b.status === 'DONE' ? 1 : 0)) : [];
+  const reorderHabits = async (from, to) => {
+    if (!dash) return;
+    const next = [...displayHabits];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setDash({ ...dash, habits: next });
+    await api('/api/habits/reorder', { method: 'POST', body: { ids: next.filter(h => h.todayStatus === 'PENDING').map(h => h.id) } });
+  };
   const { dragIndex, overIndex, handleProps, itemProps } = useDragReorder(reorderHabits);
 
   useEffect(() => {
@@ -23,9 +34,6 @@ export default function Home({ refreshKey, onChanged }) {
   const { greeting, progress, habits, tasks, bestStreak } = dash;
   const firstName = (user?.name || '').split(' ')[0].toUpperCase();
   const remaining = habits.filter(h => h.todayStatus === 'PENDING').length + tasks.filter(t => t.status === 'OPEN').length;
-  const statusRank = { PENDING: 0, COMPLETED: 1, SKIPPED: 2 };
-  const displayHabits = [...habits].sort((a, b) => (statusRank[a.todayStatus] ?? 0) - (statusRank[b.todayStatus] ?? 0));
-  const displayTasks = [...tasks].sort((a, b) => (a.status === 'DONE' ? 1 : 0) - (b.status === 'DONE' ? 1 : 0));
 
   const toggleHabit = async h => {
     if (h.todayStatus === 'COMPLETED') await api(`/api/habits/${h.id}/completion`, { method: 'DELETE' });
@@ -43,14 +51,6 @@ export default function Home({ refreshKey, onChanged }) {
   const delTask = async t => {
     await api(`/api/tasks/${t.id}`, { method: 'DELETE' });
     onChanged();
-  };
-
-  const reorderHabits = async (from, to) => {
-    const next = [...displayHabits];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    setDash({ ...dash, habits: next });
-    await api('/api/habits/reorder', { method: 'POST', body: { ids: next.filter(h => h.todayStatus === 'PENDING').map(h => h.id) } });
   };
 
   return (

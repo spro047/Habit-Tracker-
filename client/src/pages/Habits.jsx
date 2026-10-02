@@ -68,6 +68,14 @@ export default function Habits({ onChanged }) {
   const [editing, setEditing] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
   const [err, setErr] = useState('');
+  const reorderHabits = async (from, to) => {
+    if (!habits) return;
+    const next = [...habits];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setHabits(next);
+    await api('/api/habits/reorder', { method: 'POST', body: { ids: next.map(h => h.id) } });
+  };
   const { dragIndex, overIndex, handleProps, itemProps } = useDragReorder(reorderHabits);
 
   const load = () =>
@@ -97,13 +105,6 @@ export default function Habits({ onChanged }) {
     await api(`/api/habits/${h.id}`, { method: 'PATCH', body: { status: h.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED' } });
     load();
     onChanged();
-  };
-  const reorderHabits = async (from, to) => {
-    const next = [...habits];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    setHabits(next);
-    await api('/api/habits/reorder', { method: 'POST', body: { ids: next.map(h => h.id) } });
   };
 
   if (err) return <div className="neo-card p-4 text-danger font-bold uppercase">{err}</div>;
