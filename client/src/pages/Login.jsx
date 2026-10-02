@@ -66,14 +66,6 @@ export default function Login() {
     setBusy(false);
   };
 
-  const onGoogleClick = () => {
-    if (!clientId) {
-      setErr('Google sign-in is not configured yet. Run the setup wizard to enable it.');
-      return;
-    }
-    if (window.google?.accounts?.id) window.google.accounts.id.prompt();
-  };
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10">
       <div className="neo-card w-full max-w-md">
@@ -139,17 +131,16 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-5">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="flex-1 border-t-2 border-ink/30" aria-hidden="true" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-ink/50">OR</span>
-              <span className="flex-1 border-t-2 border-ink/30" aria-hidden="true" />
+          {clientId && (
+            <div className="mt-5">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="flex-1 border-t-2 border-ink/30" aria-hidden="true" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-ink/50">OR</span>
+                <span className="flex-1 border-t-2 border-ink/30" aria-hidden="true" />
+              </div>
+              <div ref={btnRef} className="w-full flex justify-center" />
             </div>
-            <button type="button" className="neo-btn w-full" onClick={onGoogleClick}>
-              LOGIN WITH GOOGLE
-            </button>
-            {clientId && <div ref={btnRef} className="w-full flex justify-center mt-2" />}
-          </div>
+          )}
         </div>
       </div>
       <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-ink/40">Habit Tracker v1 · Neo-Brutalist</p>
