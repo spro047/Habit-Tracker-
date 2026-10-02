@@ -17,15 +17,16 @@ function clientIp(req) {
 }
 
 // Distributed (Mongo-backed) rate limiter for auth — works across serverless instances.
-async function checkAuthAttempts(req, res, next) {
+const makeAuthCheck = type => async (req, res, next) => {
   const ip = clientIp(req);
   const since = new Date(Date.now() - ATTEMPT_WINDOW_MS);
-  const count = await db.collection('auth_attempts').countDocuments({ ip, createdAt: { $gte: since } });
+  const count = await db.collection('auth_attempts').countDocuments({ ip, type, createdAt: { $gte: since } });
   if (count >= ATTEMPT_LIMIT) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
   res.locals.authIp = ip;
+  res.locals.authType = type;
   next();
-}
-const recordAuthAttempt = ip => db.collection('auth_attempts').insertOne({ ip, createdAt: new Date() });
+};
+const recordAuthAttempt = (ip, type) => db.collection('auth_attempts').insertOne({ ip, type, createdAt: new Date() });
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -34,8 +35,8 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests. Try again later.' },
 });
-app.use('/api/auth/login', checkAuthAttempts);
-app.use('/api/auth/register', checkAuthAttempts);
+app.use('/api/auth/login', makeAuthCheck('login'));
+app.use('/api/auth/register', makeAuthCheck('register'));
 app.use('/api', apiLimiter);
 const SECRET = process.env.JWT_SECRET || 'dev-secret';
 const sign = (id, tz) => jwt.sign({ sub: id, tz }, SECRET, { expiresIn: '30d' });
@@ -65,7 +66,7 @@ const getHabit = async (req, res) => {
 // ---- AUTH ----
 app.post('/api/auth/register', ah(async (req, res) => {
   const { name, email, password } = req.body || {};
-  await recordAuthAttempt(res.locals.authIp);
+  await recordAuthAttempt(res.locals.authIp, 'register');
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name required' });
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Valid email required' });
   if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be 8+ characters' });
@@ -82,7 +83,7 @@ app.post('/api/auth/login', ah(async (req, res) => {
   const { email, password } = req.body || {};
   const row = await db.collection('users').findOne({ email: (email || '').toLowerCase() });
   if (!row || !row.passwordHash || !bcrypt.compareSync(password || '', row.passwordHash)) {
-    await recordAuthAttempt(res.locals.authIp);
+    await recordAuthAttempt(res.locals.authIp, 'login');
     return res.status(401).json({ error: 'Invalid credentials' });
   }
   const user = { id: row._id.toString(), name: row.name, email: row.email };
