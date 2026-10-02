@@ -37,12 +37,11 @@ export function AuthProvider({ children }) {
   };
   const login = (email, password) => api('/api/auth/login', { method: 'POST', body: { email, password } }).then(adopt);
   const register = (name, email, password) => api('/api/auth/register', { method: 'POST', body: { name, email, password } }).then(adopt);
-  const googleLogin = credential => api('/api/auth/google', { method: 'POST', body: { credential } }).then(adopt);
   const logout = () => {
     setToken(null);
     setUser(null);
     localStorage.removeItem(USER_KEY);
   };
 
-  return <AuthCtx.Provider value={{ user, booted, login, register, googleLogin, logout }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, booted, login, register, logout }}>{children}</AuthCtx.Provider>;
 }
