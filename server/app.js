@@ -38,7 +38,8 @@ const apiLimiter = rateLimit({
 app.use('/api/auth/login', makeAuthCheck('login'));
 app.use('/api/auth/register', makeAuthCheck('register'));
 app.use('/api', apiLimiter);
-const SECRET = process.env.JWT_SECRET || 'dev-secret';
+if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
+const SECRET = process.env.JWT_SECRET;
 const sign = (id, tz) => jwt.sign({ sub: id, tz }, SECRET, { expiresIn: '30d' });
 const auth = (req, res, next) => {
   const h = req.headers.authorization || '';
@@ -124,7 +125,7 @@ app.post('/api/habits', auth, ah(async (req, res) => {
   const days = Array.isArray(sched.daysOfWeek) ? sched.daysOfWeek.filter(d => Number.isInteger(d) && d >= 0 && d <= 6) : [];
   const start = validDate(sched.startDate) ? sched.startDate : todayStr();
   const priority = ['HIGH', 'MEDIUM', 'LOW'].includes(b.priority) ? b.priority : 'MEDIUM';
-  const color = typeof b.color === 'string' && b.color ? b.color : '#D97706';
+  const color = typeof b.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(b.color) ? b.color : '#D97706';
   const r = await db.collection('habits').insertOne({
     userId: req.userId,
     name: encrypt(name),
@@ -196,7 +197,7 @@ app.patch('/api/habits/:id', auth, ah(async (req, res) => {
   const sched = b.schedule || {};
   const set = {};
   if (b.name !== undefined) set.name = encrypt(String(b.name).trim());
-  if (b.color !== undefined) set.color = encrypt(b.color);
+  if (b.color !== undefined && /^#[0-9a-fA-F]{6}$/.test(b.color)) set.color = encrypt(b.color);
   if (b.priority !== undefined) set.priority = encrypt(b.priority);
   if (b.status !== undefined && ['ACTIVE', 'PAUSED', 'ARCHIVED'].includes(b.status)) set.status = b.status;
   if (b.schedule) {
@@ -213,7 +214,7 @@ app.delete('/api/habits/:id', auth, ah(async (req, res) => {
   const id = oid(req.params.id);
   const r = await db.collection('habits').deleteOne({ _id: id, userId: req.userId });
   if (!r.deletedCount) return res.status(404).json({ error: 'Habit not found' });
-  await db.collection('habit_completions').deleteMany({ habitId: id });
+  await db.collection('habit_completions').deleteMany({ habitId: id, userId: req.userId });
   res.status(204).end();
 }));
 
