@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { api } from '../api.js';
 import { useAuth } from '../store.jsx';
 import { Err, COLORS, ThemePicker } from '../components.jsx';
 
@@ -7,7 +8,7 @@ const MODE_ACTIVE = 'bg-ink text-bg';
 const MODE_IDLE = 'bg-card text-ink';
 
 export default function Login() {
-  const { login, register } = useAuth();
+  const { login, register, googleLogin } = useAuth();
   const [mode, setMode] = useState('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -15,6 +16,42 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [clientId, setClientId] = useState(null);
+  const btnRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer;
+    api('/api/auth/google-config')
+      .then(({ clientId: cid }) => {
+        if (cancelled || !cid) return;
+        setClientId(cid);
+        const init = () => {
+          if (!window.google?.accounts?.id) return false;
+          window.google.accounts.id.initialize({
+            client_id: cid,
+            callback: async ({ credential }) => {
+              setErr('');
+              try {
+                await googleLogin(credential);
+              } catch (ex) {
+                setErr(ex.message);
+              }
+            },
+          });
+          if (btnRef.current) {
+            window.google.accounts.id.renderButton(btnRef.current, { theme: 'outline', size: 'large', text: 'continue_with' });
+          }
+          return true;
+        };
+        if (!init()) timer = setTimeout(init, 1500);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   const submit = async e => {
     e.preventDefault();
@@ -93,6 +130,17 @@ export default function Login() {
               {busy ? 'WAIT…' : mode === 'login' ? 'LOG IN' : 'CREATE ACCOUNT'}
             </button>
           </form>
+
+          {clientId && (
+            <div className="mt-5">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="flex-1 border-t-2 border-ink/30" aria-hidden="true" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-ink/50">OR</span>
+                <span className="flex-1 border-t-2 border-ink/30" aria-hidden="true" />
+              </div>
+              <div ref={btnRef} className="w-full flex justify-center" />
+            </div>
+          )}
         </div>
       </div>
       <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-ink/40">Habit Tracker v1 · Neo-Brutalist</p>

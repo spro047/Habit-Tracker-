@@ -1,6 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { OAuth2Client } from 'google-auth-library';
 import { encrypt, decrypt, tag } from './enc.js';
 import { db, oid, addDays, todayStr, calcStreaks, isScheduled, habitJson, decryptHabit } from './db.js';
 
@@ -23,6 +24,21 @@ const auth = (req, res, next) => {
 const ah = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const validDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00Z').getTime());
 const PRIO = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+const googleClient = process.env.GOOGLE_CLIENT_ID ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID) : null;
+
+export async function upsertGoogleUser(payload) {
+  const email = (payload.email || '').toLowerCase();
+  const existing = await db.collection('users').findOne({ email });
+  if (existing) return existing;
+  const r = await db.collection('users').insertOne({
+    name: payload.name || email.split('@')[0],
+    email,
+    passwordHash: null,
+    timezone: 'Asia/Kolkata',
+    createdAt: new Date(),
+  });
+  return db.collection('users').findOne({ _id: r.insertedId });
+}
 
 const getHabit = async (req, res) => {
   const id = oid(req.params.id);
@@ -49,7 +65,29 @@ app.post('/api/auth/register', ah(async (req, res) => {
 app.post('/api/auth/login', ah(async (req, res) => {
   const { email, password } = req.body || {};
   const row = await db.collection('users').findOne({ email: (email || '').toLowerCase() });
-  if (!row || !bcrypt.compareSync(password || '', row.passwordHash)) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!row) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!row.passwordHash) return res.status(401).json({ error: 'This account uses Google sign-in' });
+  if (!bcrypt.compareSync(password || '', row.passwordHash)) return res.status(401).json({ error: 'Invalid credentials' });
+  const user = { id: row._id.toString(), name: row.name, email: row.email };
+  res.json({ token: sign(user.id, row.timezone), user });
+}));
+
+app.get('/api/auth/google-config', ah(async (req, res) => {
+  res.json({ clientId: process.env.GOOGLE_CLIENT_ID || null });
+}));
+
+app.post('/api/auth/google', ah(async (req, res) => {
+  const { credential } = req.body || {};
+  if (!googleClient || typeof credential !== 'string') return res.status(401).json({ error: 'Invalid Google token' });
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: process.env.GOOGLE_CLIENT_ID });
+    payload = ticket.getPayload();
+  } catch {
+    return res.status(401).json({ error: 'Invalid Google token' });
+  }
+  if (!payload || !payload.email || !payload.email_verified) return res.status(401).json({ error: 'Google email not verified' });
+  const row = await upsertGoogleUser(payload);
   const user = { id: row._id.toString(), name: row.name, email: row.email };
   res.json({ token: sign(user.id, row.timezone), user });
 }));
