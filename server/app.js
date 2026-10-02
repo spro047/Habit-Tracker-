@@ -8,13 +8,25 @@ import { db, oid, addDays, todayStr, calcStreaks, isScheduled, habitJson, decryp
 export const app = express();
 app.use(express.json());
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many attempts. Try again in 15 minutes.' },
-});
+const ATTEMPT_LIMIT = 10;
+const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  return (fwd ? String(fwd).split(',')[0].trim() : '') || req.socket?.remoteAddress || 'unknown';
+}
+
+// Distributed (Mongo-backed) rate limiter for auth — works across serverless instances.
+async function checkAuthAttempts(req, res, next) {
+  const ip = clientIp(req);
+  const since = new Date(Date.now() - ATTEMPT_WINDOW_MS);
+  const count = await db.collection('auth_attempts').countDocuments({ ip, createdAt: { $gte: since } });
+  if (count >= ATTEMPT_LIMIT) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+  res.locals.authIp = ip;
+  next();
+}
+const recordAuthAttempt = ip => db.collection('auth_attempts').insertOne({ ip, createdAt: new Date() });
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 300,
@@ -22,8 +34,8 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests. Try again later.' },
 });
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/login', checkAuthAttempts);
+app.use('/api/auth/register', checkAuthAttempts);
 app.use('/api', apiLimiter);
 const SECRET = process.env.JWT_SECRET || 'dev-secret';
 const sign = (id, tz) => jwt.sign({ sub: id, tz }, SECRET, { expiresIn: '30d' });
@@ -53,6 +65,7 @@ const getHabit = async (req, res) => {
 // ---- AUTH ----
 app.post('/api/auth/register', ah(async (req, res) => {
   const { name, email, password } = req.body || {};
+  await recordAuthAttempt(res.locals.authIp);
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name required' });
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Valid email required' });
   if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be 8+ characters' });
@@ -68,7 +81,10 @@ app.post('/api/auth/register', ah(async (req, res) => {
 app.post('/api/auth/login', ah(async (req, res) => {
   const { email, password } = req.body || {};
   const row = await db.collection('users').findOne({ email: (email || '').toLowerCase() });
-  if (!row || !bcrypt.compareSync(password || '', row.passwordHash)) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!row || !row.passwordHash || !bcrypt.compareSync(password || '', row.passwordHash)) {
+    await recordAuthAttempt(res.locals.authIp);
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
   const user = { id: row._id.toString(), name: row.name, email: row.email };
   res.json({ token: sign(user.id, row.timezone), user });
 }));

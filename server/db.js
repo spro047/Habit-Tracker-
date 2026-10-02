@@ -9,6 +9,7 @@ await client.connect();
 export const db = client.db('habbit');
 
 await db.collection('users').createIndex({ email: 1 }, { unique: true });
+await db.collection('auth_attempts').createIndex({ createdAt: 1 }, { expireAfterSeconds: 900 });
 await db.collection('habit_completions').createIndex({ habitId: 1, dateTag: 1 }, { unique: true })
   .catch(() => console.warn('dateTag index deferred: legacy completions present, run migrate-encrypt.js'));
 await db.collection('habit_completions').createIndex({ userId: 1 });
