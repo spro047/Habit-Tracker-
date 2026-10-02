@@ -1,11 +1,30 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import rateLimit from 'express-rate-limit';
 import { encrypt, decrypt, tag } from './enc.js';
 import { db, oid, addDays, todayStr, calcStreaks, isScheduled, habitJson, decryptHabit } from './db.js';
 
 export const app = express();
 app.use(express.json());
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Try again in 15 minutes.' },
+});
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Try again later.' },
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api', apiLimiter);
 const SECRET = process.env.JWT_SECRET || 'dev-secret';
 const sign = (id, tz) => jwt.sign({ sub: id, tz }, SECRET, { expiresIn: '30d' });
 const auth = (req, res, next) => {
@@ -36,7 +55,7 @@ app.post('/api/auth/register', ah(async (req, res) => {
   const { name, email, password } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name required' });
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Valid email required' });
-  if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be 6+ characters' });
+  if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be 8+ characters' });
   const em = email.toLowerCase();
   if (await db.collection('users').findOne({ email: em })) return res.status(409).json({ error: 'Email already registered' });
   const r = await db.collection('users').insertOne({

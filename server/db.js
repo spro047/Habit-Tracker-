@@ -4,7 +4,7 @@ import { decrypt } from './enc.js';
 const url = process.env.MONGO_URL;
 if (!url) throw new Error('MONGO_URL environment variable is required');
 
-export const client = new MongoClient(url, { appName: 'habbit-tracker', monitorCommands: true, maxPoolSize: 10, minPoolSize: 2 });
+export const client = new MongoClient(url, { appName: 'habbit-tracker', monitorCommands: true, maxPoolSize: 5, minPoolSize: 1 });
 await client.connect();
 export const db = client.db('habbit');
 

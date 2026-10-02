@@ -85,7 +85,7 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 required
-                minLength={6}
+                minLength={8}
                 disabled={busy}
               />
             </div>
