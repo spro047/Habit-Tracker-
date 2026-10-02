@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../store.jsx';
 import { navigate } from '../router.jsx';
+import { useDragReorder } from '../useDrag.jsx';
 import { ProgressBar, PriorityTag, CheckSquare, ScratchCard, Loading, Empty } from '../components.jsx';
 
 export default function Home({ refreshKey, onChanged }) {
   const { user } = useAuth();
   const [dash, setDash] = useState(null);
   const [err, setErr] = useState('');
-  const [dragIndex, setDragIndex] = useState(null);
-  const [overIndex, setOverIndex] = useState(null);
+  const { dragIndex, overIndex, handleProps, itemProps } = useDragReorder(reorderHabits);
 
   useEffect(() => {
     api('/api/dashboard/today')
@@ -45,12 +45,7 @@ export default function Home({ refreshKey, onChanged }) {
     onChanged();
   };
 
-  const reorderHabits = async () => {
-    const from = dragIndex;
-    const to = overIndex;
-    setDragIndex(null);
-    setOverIndex(null);
-    if (from === null || to === null || from === to) return;
+  const reorderHabits = async (from, to) => {
     const next = [...displayHabits];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
@@ -96,25 +91,12 @@ export default function Home({ refreshKey, onChanged }) {
           <span className="neo-tag bg-card">{String(remaining).padStart(2, '0')} REMAINING</span>
         </div>
         {habits.length === 0 && tasks.length === 0 && <Empty text="Nothing scheduled. Tap + to add." />}
-        <div className="space-y-3">
+        <div className="space-y-3" data-drag-list>
           {displayHabits.map((h, i) => (
             <div
               key={h.id}
-              draggable
-              onDragStart={() => setDragIndex(i)}
-              onDragOver={e => {
-                e.preventDefault();
-                if (overIndex !== i) setOverIndex(i);
-              }}
-              onDrop={e => {
-                e.preventDefault();
-                reorderHabits();
-              }}
-              onDragEnd={() => {
-                setDragIndex(null);
-                setOverIndex(null);
-              }}
-              className={`neo-card p-3 flex items-center gap-3 ${dragIndex === i ? 'opacity-40' : ''} ${
+              {...itemProps()}
+              className={`neo-card p-3 flex items-center gap-3 ${
                 overIndex === i && dragIndex !== null && dragIndex !== i ? 'ring-4 ring-secondary' : ''
               }`}
             >
@@ -131,6 +113,13 @@ export default function Home({ refreshKey, onChanged }) {
                   SKIP
                 </button>
               )}
+              <span
+                {...handleProps(i)}
+                className="cursor-grab touch-none select-none px-1 text-lg text-ink/40 active:cursor-grabbing"
+                aria-label={`Drag ${h.name} to reorder`}
+              >
+                ≡
+              </span>
             </div>
           ))}
           {displayTasks.map(t => (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { navigate } from '../router.jsx';
+import { useDragReorder } from '../useDrag.jsx';
 import { Modal, HabitForm, Confirm, PriorityTag, weeklyLabel, Loading, Empty } from '../components.jsx';
 
 const CELL_COLORS = ['bg-card', 'bg-[#A7F3D0]', 'bg-[#34D399]', 'bg-[#059669]', 'bg-[#065F46]'];
@@ -66,9 +67,8 @@ export default function Habits({ onChanged }) {
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
-  const [dragIndex, setDragIndex] = useState(null);
-  const [overIndex, setOverIndex] = useState(null);
   const [err, setErr] = useState('');
+  const { dragIndex, overIndex, handleProps, itemProps } = useDragReorder(reorderHabits);
 
   const load = () =>
     Promise.all([api('/api/habits'), api('/api/calendar/year')])
@@ -98,12 +98,7 @@ export default function Habits({ onChanged }) {
     load();
     onChanged();
   };
-  const dropReorder = async () => {
-    const from = dragIndex;
-    const to = overIndex;
-    setDragIndex(null);
-    setOverIndex(null);
-    if (from === null || to === null || from === to) return;
+  const reorderHabits = async (from, to) => {
     const next = [...habits];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
@@ -126,27 +121,14 @@ export default function Habits({ onChanged }) {
       <YearHeatmap days={yearDays} />
 
       {habits.length === 0 && <Empty text="No habits yet. Create your first." />}
-      <p className="text-[10px] font-bold uppercase tracking-widest text-ink/40">Drag to reorder</p>
-      <div className="space-y-3">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-ink/40">Drag the ≡ grip to reorder</p>
+      <div className="space-y-3" data-drag-list>
         {habits.map((h, i) => (
           <div
             key={h.id}
-            draggable
-            onDragStart={() => setDragIndex(i)}
-            onDragOver={e => {
-              e.preventDefault();
-              if (overIndex !== i) setOverIndex(i);
-            }}
-            onDrop={e => {
-              e.preventDefault();
-              dropReorder();
-            }}
-            onDragEnd={() => {
-              setDragIndex(null);
-              setOverIndex(null);
-            }}
+            {...itemProps()}
             onClick={() => navigate(`#/habit/${h.id}`)}
-            className={`neo-card flex cursor-pointer ${h.status === 'PAUSED' ? 'opacity-60' : ''} ${dragIndex === i ? 'opacity-40' : ''} ${
+            className={`neo-card flex cursor-pointer ${h.status === 'PAUSED' ? 'opacity-60' : ''} ${
               overIndex === i && dragIndex !== null && dragIndex !== i ? 'ring-4 ring-secondary' : ''
             }`}
           >
@@ -195,6 +177,13 @@ export default function Habits({ onChanged }) {
                 </button>
               </div>
             </div>
+            <span
+              {...handleProps(i)}
+              className="cursor-grab touch-none select-none self-stretch flex items-center px-2 text-lg text-ink/40 active:cursor-grabbing"
+              aria-label={`Drag ${h.name} to reorder`}
+            >
+              ≡
+            </span>
           </div>
         ))}
       </div>
