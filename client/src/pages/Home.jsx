@@ -23,6 +23,9 @@ export default function Home({ refreshKey, onChanged }) {
   const { greeting, progress, habits, tasks, bestStreak } = dash;
   const firstName = (user?.name || '').split(' ')[0].toUpperCase();
   const remaining = habits.filter(h => h.todayStatus === 'PENDING').length + tasks.filter(t => t.status === 'OPEN').length;
+  const statusRank = { PENDING: 0, COMPLETED: 1, SKIPPED: 2 };
+  const displayHabits = [...habits].sort((a, b) => (statusRank[a.todayStatus] ?? 0) - (statusRank[b.todayStatus] ?? 0));
+  const displayTasks = [...tasks].sort((a, b) => (a.status === 'DONE' ? 1 : 0) - (b.status === 'DONE' ? 1 : 0));
 
   const toggleHabit = async h => {
     if (h.todayStatus === 'COMPLETED') await api(`/api/habits/${h.id}/completion`, { method: 'DELETE' });
@@ -48,11 +51,11 @@ export default function Home({ refreshKey, onChanged }) {
     setDragIndex(null);
     setOverIndex(null);
     if (from === null || to === null || from === to) return;
-    const next = [...dash.habits];
+    const next = [...displayHabits];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     setDash({ ...dash, habits: next });
-    await api('/api/habits/reorder', { method: 'POST', body: { ids: next.map(h => h.id) } });
+    await api('/api/habits/reorder', { method: 'POST', body: { ids: next.filter(h => h.todayStatus === 'PENDING').map(h => h.id) } });
   };
 
   return (
@@ -94,7 +97,7 @@ export default function Home({ refreshKey, onChanged }) {
         </div>
         {habits.length === 0 && tasks.length === 0 && <Empty text="Nothing scheduled. Tap + to add." />}
         <div className="space-y-3">
-          {habits.map((h, i) => (
+          {displayHabits.map((h, i) => (
             <div
               key={h.id}
               draggable
@@ -130,7 +133,7 @@ export default function Home({ refreshKey, onChanged }) {
               )}
             </div>
           ))}
-          {tasks.map(t => (
+          {displayTasks.map(t => (
             <div key={t.id} className="neo-card p-3 flex items-center gap-3">
               <CheckSquare checked={t.status === 'DONE'} onClick={() => toggleTask(t)} label={`Complete ${t.title}`} />
               <div className="min-w-0 flex-1">
