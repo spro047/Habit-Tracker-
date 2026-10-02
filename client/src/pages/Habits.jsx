@@ -66,6 +66,8 @@ export default function Habits({ onChanged }) {
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
   const [err, setErr] = useState('');
 
   const load = () =>
@@ -91,6 +93,23 @@ export default function Habits({ onChanged }) {
     load();
     onChanged();
   };
+  const togglePause = async h => {
+    await api(`/api/habits/${h.id}`, { method: 'PATCH', body: { status: h.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED' } });
+    load();
+    onChanged();
+  };
+  const dropReorder = async () => {
+    const from = dragIndex;
+    const to = overIndex;
+    setDragIndex(null);
+    setOverIndex(null);
+    if (from === null || to === null || from === to) return;
+    const next = [...habits];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setHabits(next);
+    await api('/api/habits/reorder', { method: 'POST', body: { ids: next.map(h => h.id) } });
+  };
 
   if (err) return <div className="neo-card p-4 text-danger font-bold uppercase">{err}</div>;
   if (!habits) return <Loading />;
@@ -107,19 +126,53 @@ export default function Habits({ onChanged }) {
       <YearHeatmap days={yearDays} />
 
       {habits.length === 0 && <Empty text="No habits yet. Create your first." />}
+      <p className="text-[10px] font-bold uppercase tracking-widest text-ink/40">Drag to reorder</p>
       <div className="space-y-3">
-        {habits.map(h => (
-          <div key={h.id} className="neo-card flex cursor-pointer" onClick={() => navigate(`#/habit/${h.id}`)}>
+        {habits.map((h, i) => (
+          <div
+            key={h.id}
+            draggable
+            onDragStart={() => setDragIndex(i)}
+            onDragOver={e => {
+              e.preventDefault();
+              if (overIndex !== i) setOverIndex(i);
+            }}
+            onDrop={e => {
+              e.preventDefault();
+              dropReorder();
+            }}
+            onDragEnd={() => {
+              setDragIndex(null);
+              setOverIndex(null);
+            }}
+            onClick={() => navigate(`#/habit/${h.id}`)}
+            className={`neo-card flex cursor-pointer ${h.status === 'PAUSED' ? 'opacity-60' : ''} ${dragIndex === i ? 'opacity-40' : ''} ${
+              overIndex === i && dragIndex !== null && dragIndex !== i ? 'ring-4 ring-secondary' : ''
+            }`}
+          >
             <div className="w-2 shrink-0" style={{ background: h.color }} aria-hidden="true" />
             <div className="p-3 flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-display text-lg truncate">{h.name.toUpperCase()}</p>
-                <PriorityTag p={h.priority} />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {h.status === 'PAUSED' && <span className="neo-tag bg-secondary">PAUSED</span>}
+                  <PriorityTag p={h.priority} />
+                </div>
               </div>
               <p className="text-xs font-bold uppercase text-ink/50 mt-1">
                 {h.schedule.type === 'DAILY' ? 'DAILY' : weeklyLabel(h.schedule.daysOfWeek)} · STREAK {h.streak.current} · BEST {h.streak.best}
               </p>
               <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  className="neo-tag bg-card cursor-pointer"
+                  onClick={e => {
+                    e.stopPropagation();
+                    togglePause(h);
+                  }}
+                >
+                  {h.status === 'PAUSED' ? 'RESUME' : 'PAUSE'}
+                </button>
                 <button
                   type="button"
                   className="neo-tag bg-card cursor-pointer"

@@ -64,7 +64,7 @@ app.get('/api/auth/me', auth, ah(async (req, res) => {
 app.get('/api/habits', auth, ah(async (req, res) => {
   const today = todayStr(req.tz || 'Asia/Kolkata');
   const [rows, allRecs] = await Promise.all([
-    db.collection('habits').find({ userId: req.userId, status: { $ne: 'ARCHIVED' } }, { batchSize: 5000 }).sort({ _id: 1 }).toArray(),
+    db.collection('habits').find({ userId: req.userId, status: { $ne: 'ARCHIVED' } }, { batchSize: 5000 }).sort({ position: 1, _id: 1 }).toArray(),
     db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
   ]);
   const habits = rows.map(decryptHabit);
@@ -99,6 +99,7 @@ app.post('/api/habits', auth, ah(async (req, res) => {
     daysOfWeek: encrypt(JSON.stringify(days)),
     startDate: encrypt(start),
     status: 'ACTIVE',
+    position: await db.collection('habits').countDocuments({ userId: req.userId }),
     createdAt: new Date(),
   });
   const row = await db.collection('habits').findOne({ _id: r.insertedId });
@@ -180,6 +181,19 @@ app.delete('/api/habits/:id', auth, ah(async (req, res) => {
   res.status(204).end();
 }));
 
+app.post('/api/habits/reorder', auth, ah(async (req, res) => {
+  const ids = (req.body || {}).ids;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
+  const owned = new Set((await db.collection('habits').find({ userId: req.userId }, { projection: { _id: 1 } }).toArray()).map(h => h._id.toString()));
+  const ops = [];
+  for (const [i, id] of ids.entries()) {
+    if (!owned.has(id)) continue;
+    ops.push({ updateOne: { filter: { _id: oid(id), userId: req.userId }, update: { $set: { position: i } } } });
+  }
+  if (ops.length) await db.collection('habits').bulkWrite(ops);
+  res.json({ ok: true });
+}));
+
 // ---- COMPLETIONS ----
 const dateOf = req => validDate((req.body || {}).date) ? req.body.date : null;
 
@@ -221,7 +235,7 @@ app.delete('/api/habits/:id/completion', auth, ah(async (req, res) => {
 // ---- DASHBOARD ----
 app.get('/api/dashboard/today', auth, ah(async (req, res) => {
   const [rows, allRecs, tasks] = await Promise.all([
-    db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).toArray(),
+    db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).sort({ position: 1, _id: 1 }).toArray(),
     db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
     db.collection('tasks').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
   ]);
@@ -308,7 +322,7 @@ app.get('/api/calendar/month', auth, ah(async (req, res) => {
   const qm = parseInt(req.query.month, 10);
   const m = Number.isInteger(qm) && qm >= 0 && qm <= 11 ? qm : +now.slice(5, 7) - 1;
   const [rows, allRecs] = await Promise.all([
-    db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).toArray(),
+    db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).sort({ position: 1, _id: 1 }).toArray(),
     db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
   ]);
   const dec = rows.map(decryptHabit);
@@ -336,7 +350,7 @@ app.get('/api/calendar/year', auth, ah(async (req, res) => {
   const now = todayStr(req.tz || 'Asia/Kolkata');
   const year = parseInt(req.query.year, 10) || +now.slice(0, 4);
   const [rows, allRecs] = await Promise.all([
-    db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).toArray(),
+    db.collection('habits').find({ userId: req.userId, status: 'ACTIVE' }, { batchSize: 5000 }).sort({ position: 1, _id: 1 }).toArray(),
     db.collection('habit_completions').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
   ]);
   const dec = rows.map(decryptHabit);

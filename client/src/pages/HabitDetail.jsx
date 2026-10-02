@@ -45,6 +45,11 @@ export default function HabitDetail({ id, onChanged }) {
     load();
     onChanged();
   };
+  const togglePause = async () => {
+    await api(`/api/habits/${id}`, { method: 'PATCH', body: { status: habit.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED' } });
+    load();
+    onChanged();
+  };
 
   return (
     <div className="space-y-5">
@@ -102,11 +107,15 @@ export default function HabitDetail({ id, onChanged }) {
         <h2 className="font-display text-lg mb-2">SCHEDULE</h2>
         <p className="font-bold uppercase text-sm">{habit.schedule.type === 'DAILY' ? 'Every day' : weeklyLabel(habit.schedule.daysOfWeek)}</p>
         <p className="text-xs font-bold uppercase text-ink/50 mt-1">Started {habit.schedule.startDate}</p>
+        {habit.status === 'PAUSED' && <p className="neo-tag bg-secondary mt-2">PAUSED</p>}
         {data.todayStatus !== 'PENDING' && (
           <button type="button" className="neo-btn w-full mt-3 text-xs" onClick={resetToday}>
             RESET FOR THE DAY
           </button>
         )}
+        <button type="button" className="neo-btn neo-btn--white w-full mt-2 text-xs" onClick={togglePause}>
+          {habit.status === 'PAUSED' ? 'RESUME HABIT' : 'PAUSE HABIT'}
+        </button>
         <div className="flex gap-2 mt-3">
           <button type="button" className="neo-btn flex-1 text-xs" onClick={() => setEditing(true)}>
             EDIT
