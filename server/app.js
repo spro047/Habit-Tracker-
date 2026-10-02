@@ -184,13 +184,18 @@ app.delete('/api/habits/:id', auth, ah(async (req, res) => {
 app.post('/api/habits/reorder', auth, ah(async (req, res) => {
   const ids = (req.body || {}).ids;
   if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
-  const owned = new Set((await db.collection('habits').find({ userId: req.userId }, { projection: { _id: 1 } }).toArray()).map(h => h._id.toString()));
-  const ops = [];
-  for (const [i, id] of ids.entries()) {
-    if (!owned.has(id)) continue;
-    ops.push({ updateOne: { filter: { _id: oid(id), userId: req.userId }, update: { $set: { position: i } } } });
+  const current = await db.collection('habits').find({ userId: req.userId }, { projection: { _id: 1 } }).sort({ position: 1, _id: 1 }).toArray();
+  const fullIds = current.map(h => h._id.toString());
+  const owned = new Set(fullIds);
+  const valid = ids.filter(id => owned.has(id));
+  const payload = new Set(valid);
+  const newOrder = [];
+  let pi = 0;
+  for (const id of fullIds) {
+    newOrder.push(payload.has(id) ? valid[pi++] : id);
   }
-  if (ops.length) await db.collection('habits').bulkWrite(ops);
+  const ops = newOrder.map((id, i) => ({ updateOne: { filter: { _id: oid(id), userId: req.userId }, update: { $set: { position: i } } } }));
+  await db.collection('habits').bulkWrite(ops);
   res.json({ ok: true });
 }));
 

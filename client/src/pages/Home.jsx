@@ -8,6 +8,8 @@ export default function Home({ refreshKey, onChanged }) {
   const { user } = useAuth();
   const [dash, setDash] = useState(null);
   const [err, setErr] = useState('');
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
 
   useEffect(() => {
     api('/api/dashboard/today')
@@ -38,6 +40,19 @@ export default function Home({ refreshKey, onChanged }) {
   const delTask = async t => {
     await api(`/api/tasks/${t.id}`, { method: 'DELETE' });
     onChanged();
+  };
+
+  const reorderHabits = async () => {
+    const from = dragIndex;
+    const to = overIndex;
+    setDragIndex(null);
+    setOverIndex(null);
+    if (from === null || to === null || from === to) return;
+    const next = [...dash.habits];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setDash({ ...dash, habits: next });
+    await api('/api/habits/reorder', { method: 'POST', body: { ids: next.map(h => h.id) } });
   };
 
   return (
@@ -79,8 +94,27 @@ export default function Home({ refreshKey, onChanged }) {
         </div>
         {habits.length === 0 && tasks.length === 0 && <Empty text="Nothing scheduled. Tap + to add." />}
         <div className="space-y-3">
-          {habits.map(h => (
-            <div key={h.id} className="neo-card p-3 flex items-center gap-3">
+          {habits.map((h, i) => (
+            <div
+              key={h.id}
+              draggable
+              onDragStart={() => setDragIndex(i)}
+              onDragOver={e => {
+                e.preventDefault();
+                if (overIndex !== i) setOverIndex(i);
+              }}
+              onDrop={e => {
+                e.preventDefault();
+                reorderHabits();
+              }}
+              onDragEnd={() => {
+                setDragIndex(null);
+                setOverIndex(null);
+              }}
+              className={`neo-card p-3 flex items-center gap-3 ${dragIndex === i ? 'opacity-40' : ''} ${
+                overIndex === i && dragIndex !== null && dragIndex !== i ? 'ring-4 ring-secondary' : ''
+              }`}
+            >
               <ScratchCard status={h.todayStatus} label={`Complete ${h.name}`} onAction={() => toggleHabit(h)} />
               <button type="button" className="min-w-0 flex-1 text-left cursor-pointer" onClick={() => navigate(`#/habit/${h.id}`)}>
                 <p className="font-bold uppercase truncate">{h.name}</p>
