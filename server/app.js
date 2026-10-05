@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { encrypt, decrypt, tag } from './enc.js';
-import { db, oid, addDays, todayStr, calcStreaks, isScheduled, habitJson, decryptHabit } from './db.js';
+import { db, oid, addDays, todayStr, calcStreaks, isScheduled, habitJson, decryptHabit, decryptGoal, goalJson } from './db.js';
 
 export const app = express();
 app.use(express.json());
@@ -354,6 +354,94 @@ app.patch('/api/tasks/:id', auth, ah(async (req, res) => {
 app.delete('/api/tasks/:id', auth, ah(async (req, res) => {
   const r = await db.collection('tasks').deleteOne({ _id: oid(req.params.id), userId: req.userId });
   if (!r.deletedCount) return res.status(404).json({ error: 'Task not found' });
+  res.status(204).end();
+}));
+
+// ---- GOALS ----
+const goalChecked = async (goalId, userId) => {
+  const recs = await db.collection('goal_checkins').find({ goalId, userId }).toArray();
+  return new Set(recs.map(r => decrypt(r.date)));
+};
+
+app.get('/api/goals', auth, ah(async (req, res) => {
+  const today = todayStr(req.tz || 'Asia/Kolkata');
+  const [rows, allRecs] = await Promise.all([
+    db.collection('goals').find({ userId: req.userId, status: { $ne: 'ARCHIVED' } }, { batchSize: 5000 }).sort({ position: 1, _id: 1 }).toArray(),
+    db.collection('goal_checkins').find({ userId: req.userId }, { batchSize: 5000 }).toArray(),
+  ]);
+  const byGoal = new Map();
+  for (const r of allRecs) {
+    const key = r.goalId.toString();
+    if (!byGoal.has(key)) byGoal.set(key, new Set());
+    byGoal.get(key).add(decrypt(r.date));
+  }
+  res.json({
+    goals: rows.map(decryptGoal).map(g => goalJson(g, byGoal.get(g._id.toString()) || new Set(), today)),
+  });
+}));
+
+app.post('/api/goals', auth, ah(async (req, res) => {
+  const b = req.body || {};
+  const title = (b.title || '').trim();
+  if (!title) return res.status(400).json({ error: 'Title required' });
+  if (!Number.isInteger(b.durationDays) || b.durationDays < 1 || b.durationDays > 365) return res.status(400).json({ error: 'Duration must be 1-365 days' });
+  const tz = req.tz || 'Asia/Kolkata';
+  const startDate = validDate(b.startDate) ? b.startDate : todayStr(tz);
+  const r = await db.collection('goals').insertOne({
+    userId: req.userId,
+    title: encrypt(title),
+    durationDays: b.durationDays,
+    startDate: encrypt(startDate),
+    status: 'ACTIVE',
+    position: await db.collection('goals').countDocuments({ userId: req.userId }),
+    createdAt: new Date(),
+  });
+  const row = await db.collection('goals').findOne({ _id: r.insertedId });
+  res.status(201).json(goalJson(decryptGoal(row), new Set(), todayStr(tz)));
+}));
+
+app.patch('/api/goals/:id', auth, ah(async (req, res) => {
+  const id = oid(req.params.id);
+  const row = id ? await db.collection('goals').findOne({ _id: id, userId: req.userId }) : null;
+  if (!row) return res.status(404).json({ error: 'Goal not found' });
+  const b = req.body || {};
+  const set = {};
+  if (b.title !== undefined && String(b.title).trim()) set.title = encrypt(String(b.title).trim());
+  if (b.durationDays !== undefined && Number.isInteger(b.durationDays) && b.durationDays >= 1 && b.durationDays <= 365) set.durationDays = b.durationDays;
+  if (validDate(b.startDate)) set.startDate = encrypt(b.startDate);
+  if (b.status !== undefined && ['ACTIVE', 'ARCHIVED'].includes(b.status)) set.status = b.status;
+  if (Object.keys(set).length) await db.collection('goals').updateOne({ _id: id, userId: req.userId }, { $set: set });
+  const updated = await db.collection('goals').findOne({ _id: id, userId: req.userId });
+  const checked = await goalChecked(id, req.userId);
+  res.json(goalJson(decryptGoal(updated), checked, todayStr(req.tz || 'Asia/Kolkata')));
+}));
+
+app.delete('/api/goals/:id', auth, ah(async (req, res) => {
+  const id = oid(req.params.id);
+  const r = await db.collection('goals').deleteOne({ _id: id, userId: req.userId });
+  if (!r.deletedCount) return res.status(404).json({ error: 'Goal not found' });
+  await db.collection('goal_checkins').deleteMany({ goalId: id, userId: req.userId });
+  res.status(204).end();
+}));
+
+app.post('/api/goals/:id/checkin', auth, ah(async (req, res) => {
+  const id = oid(req.params.id);
+  const row = id ? await db.collection('goals').findOne({ _id: id, userId: req.userId }, { projection: { _id: 1 } }) : null;
+  if (!row) return res.status(404).json({ error: 'Goal not found' });
+  const date = dateOf(req) || todayStr(req.tz || 'Asia/Kolkata');
+  const dateTag = tag(row._id, date);
+  await db.collection('goal_checkins').updateOne(
+    { goalId: row._id, dateTag },
+    { $set: { userId: req.userId, date: encrypt(date), dateTag } },
+    { upsert: true }
+  );
+  res.json({ date, checked: true });
+}));
+
+app.delete('/api/goals/:id/checkin', auth, ah(async (req, res) => {
+  const id = oid(req.params.id);
+  const date = dateOf(req) || todayStr(req.tz || 'Asia/Kolkata');
+  await db.collection('goal_checkins').deleteOne({ goalId: id, userId: req.userId, dateTag: tag(id, date) });
   res.status(204).end();
 }));
 

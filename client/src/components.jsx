@@ -319,6 +319,69 @@ export function HabitForm({ initial, onSubmit, onCancel, submitLabel = 'CREATE H
   );
 }
 
+export function GoalForm({ initial, onSubmit, onCancel, submitLabel = 'CREATE GOAL' }) {
+  const derived = initial
+    ? initial.durationDays % 7 === 0 && initial.durationDays >= 7
+      ? { unit: 'WEEKS', amount: initial.durationDays / 7 }
+      : { unit: 'DAYS', amount: initial.durationDays }
+    : { unit: 'WEEKS', amount: 2 };
+  const [title, setTitle] = useState(initial?.title || '');
+  const [unit, setUnit] = useState(derived.unit);
+  const [amount, setAmount] = useState(derived.amount);
+  const [startDate, setStartDate] = useState(initial?.startDate || new Date().toISOString().slice(0, 10));
+
+  const amt = Number(amount) || 0;
+  const durationDays = unit === 'WEEKS' ? amt * 7 : amt;
+
+  const submit = e => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    if (durationDays < 1) return;
+    onSubmit({ title: title.trim(), durationDays, startDate });
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <div>
+        <label className="neo-label" htmlFor="gname">TITLE</label>
+        <input id="gname" className="neo-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="20 Pushups" autoFocus required />
+      </div>
+      <div>
+        <span className="neo-label">DURATION</span>
+        <div className="flex gap-2 mb-2">
+          <button type="button" onClick={() => setUnit('DAYS')} aria-pressed={unit === 'DAYS'} className={`neo-tag cursor-pointer ${unit === 'DAYS' ? 'bg-primary' : 'bg-card'}`}>
+            DAYS
+          </button>
+          <button type="button" onClick={() => setUnit('WEEKS')} aria-pressed={unit === 'WEEKS'} className={`neo-tag cursor-pointer ${unit === 'WEEKS' ? 'bg-primary' : 'bg-card'}`}>
+            WEEKS
+          </button>
+        </div>
+        <input
+          id="gamount"
+          type="number"
+          min="1"
+          className="neo-input"
+          value={amount}
+          onChange={e => setAmount(e.target.value)}
+          aria-label="Duration amount"
+          required
+        />
+        <p className="text-xs font-bold uppercase text-ink/50 mt-1">= {durationDays} DAYS</p>
+      </div>
+      <div>
+        <label className="neo-label" htmlFor="gstart">START DATE</label>
+        <input id="gstart" type="date" className="neo-input" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+      </div>
+      <div className="flex gap-2 pt-2">
+        {onCancel && (
+          <button type="button" className="neo-btn neo-btn--white flex-1" onClick={onCancel}>CANCEL</button>
+        )}
+        <button type="submit" className="neo-btn flex-1">{submitLabel}</button>
+      </div>
+    </form>
+  );
+}
+
 export function TaskForm({ onSubmit, onCancel }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('MEDIUM');

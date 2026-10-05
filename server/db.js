@@ -15,6 +15,9 @@ await db.collection('habit_completions').createIndex({ habitId: 1, dateTag: 1 },
 await db.collection('habit_completions').createIndex({ userId: 1 });
 await db.collection('habits').createIndex({ userId: 1 });
 await db.collection('tasks').createIndex({ userId: 1 });
+await db.collection('goals').createIndex({ userId: 1 });
+await db.collection('goal_checkins').createIndex({ goalId: 1, dateTag: 1 }, { unique: true }).catch(() => console.warn('goal dateTag index deferred'));
+await db.collection('goal_checkins').createIndex({ userId: 1 });
 
 export const oid = id => {
   try { return new ObjectId(id); } catch { return null; }
@@ -90,3 +93,43 @@ export const habitJson = r => ({
   schedule: { type: r.scheduleType, daysOfWeek: r.daysOfWeek || [], startDate: r.startDate },
   status: r.status,
 });
+
+export const decryptGoal = r => ({
+  _id: r._id,
+  userId: r.userId,
+  title: decrypt(r.title),
+  durationDays: r.durationDays,
+  startDate: decrypt(r.startDate),
+  status: r.status,
+  position: r.position,
+});
+
+export const goalJson = (g, checked, today) => {
+  const endDate = addDays(g.startDate, g.durationDays - 1);
+  const days = [];
+  let checkedDays = 0;
+  let daysLeft = 0;
+  let todayChecked = false;
+  for (let d = g.startDate; d <= endDate; d = addDays(d, 1)) {
+    const isChecked = checked.has(d);
+    if (isChecked) checkedDays++;
+    if (d > today) daysLeft++;
+    if (d === today) todayChecked = isChecked;
+    days.push({ date: d, checked: isChecked, future: d > today });
+  }
+  return {
+    id: g._id.toString(),
+    title: g.title,
+    durationDays: g.durationDays,
+    startDate: g.startDate,
+    endDate,
+    status: g.status,
+    todayChecked,
+    checkedDays,
+    totalDays: g.durationDays,
+    pct: g.durationDays ? Math.round((checkedDays / g.durationDays) * 100) : 0,
+    daysLeft,
+    achieved: checkedDays >= g.durationDays,
+    days,
+  };
+};
